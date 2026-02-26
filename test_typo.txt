@@ -1,0 +1,9 @@
+=== Base RGB ===
+
+
+=== Upscale 2x -> MaxRGB -> Enhance ===
+работоспособность"
+
+=== Upscale 4x -> MaxRGB -> Enhance ===
+работоспособность::
+

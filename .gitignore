@@ -1,0 +1,39 @@
+# Env and secrets
+.env
+.env.local
+*.pem
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build / Docker
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log
+logs/
+
+# Deploy (VPS)
+letsencrypt-webroot/
+backups/
+
+# Cursor (локальная среда, не передаём)
+.cursor/
+
+# Markdown (не передаём в репозиторий)
+*.md
