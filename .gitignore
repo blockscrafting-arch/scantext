@@ -34,6 +34,7 @@ backups/
 
 # Cursor (локальная среда, не передаём)
 .cursor/
+.cursorrules
 
 # Markdown (не передаём в репозиторий)
 *.md
