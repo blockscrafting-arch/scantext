@@ -13,10 +13,13 @@ lines = [
 
 def is_junk(line: str) -> bool:
     chars = line.replace(" ", "")
-    if not chars: return True
+    if not chars:
+        return True
     letters = len(re.findall(r'[а-яА-Яa-zA-Z]', chars))
-    if letters < 3: return True
-    if letters / len(chars) < 0.5: return True
+    if letters < 3:
+        return True
+    if letters / len(chars) < 0.5:
+        return True
     words = re.findall(r'[а-яА-Яa-zA-Z]+', line)
     
     # Needs at least one word of 4+ letters OR multiple 3-letter words
@@ -25,7 +28,8 @@ def is_junk(line: str) -> bool:
         return True
         
     weird = len(re.findall(r'[^а-яА-Яa-zA-Z0-9\s.,!?:\-]', line))
-    if weird > 2: return True
+    if weird > 2:
+        return True
     
     # NALie ЛЕ i] has weird=1 (the ]). 
     # Let's count uppercase vs lowercase in words?
@@ -33,5 +37,5 @@ def is_junk(line: str) -> bool:
     
     return False
 
-for l in lines:
-    print(f"{l!r:30} -> {is_junk(l)}")
+for line in lines:
+    print(f"{line!r:30} -> {is_junk(line)}")

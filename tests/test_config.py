@@ -1,6 +1,4 @@
 """Тесты загрузки конфигурации."""
-import os
-import pytest
 
 
 def test_settings_loads_from_env(settings):

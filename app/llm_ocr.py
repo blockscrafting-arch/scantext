@@ -7,11 +7,6 @@ from __future__ import annotations
 import base64
 import logging
 from io import BytesIO
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from PIL import Image as PILImage
-
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """Ты — высокоточный OCR-инструмент. Твоя единственная задача: извлечь весь текст с изображения дословно.

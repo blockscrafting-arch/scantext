@@ -8,7 +8,6 @@ import re
 
 from aiogram.filters import BaseFilter
 from aiogram.types import Message, CallbackQuery
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models import User

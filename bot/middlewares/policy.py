@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Awaitable, Callable, Dict
 
-from aiogram import BaseMiddleware, F
+from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 from sqlalchemy import select
 

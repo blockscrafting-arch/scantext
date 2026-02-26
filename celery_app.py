@@ -3,6 +3,7 @@ Celery app: брокер Redis, задачи обработки документ
 """
 from __future__ import annotations
 
+# ruff: noqa: E402 — imports below depend on setup_logging / config
 import logging
 import os
 import time
@@ -293,7 +294,7 @@ def _process_pdf_hybrid(pdf_bytes: bytes, pypdf_texts: list[str]) -> str:
     """
     min_chars = getattr(settings, "PDF_MIN_CHARS_PER_PAGE", 150) or 150
     try:
-        from pdf2image import convert_from_bytes
+        import pdf2image  # noqa: F401 — check availability for _run_llm_for_pdf_page
     except Exception as e:
         logger.warning("pdf2image not available: %s", e)
         return "\n\n---\n\n".join(
@@ -518,7 +519,7 @@ def broadcast_task(text: str = "", photo_file_id: str | None = None, video_file_
     session = SyncSession()
     try:
         result = session.execute(
-            select(User.tg_id).where(User.is_agreed_to_policy == True).where(User.is_banned == False)
+            select(User.tg_id).where(User.is_agreed_to_policy).where(~User.is_banned)
         )
         tg_ids = [row[0] for row in result.fetchall()]
     finally:

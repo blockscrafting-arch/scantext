@@ -11,7 +11,7 @@ from aiogram.types import Message, TelegramObject
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.models import Document, User, UserBalance
+from app.models import User
 
 logger = logging.getLogger(__name__)
 

@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+# ruff: noqa: E402 — imports below must run after load_dotenv()
 import asyncio
 import logging
 import sys

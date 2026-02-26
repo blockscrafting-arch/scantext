@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from html import escape as html_escape
 
 from aiogram import F, Router
@@ -18,7 +17,7 @@ from sqlalchemy.orm import selectinload
 from app.models import Document, Transaction, User, UserBalance
 from app.services.export import build_summary_xlsx, build_transactions_xlsx, build_users_xlsx
 from app.services.settings import get_setting, set_setting
-from bot.filters import IsAdminFilter, is_admin, is_superadmin
+from bot.filters import IsAdminFilter, is_superadmin
 from config import get_settings as get_cfg
 from bot.keyboards.admin import (
     ADMIN_BACK,
@@ -41,7 +40,6 @@ from bot.keyboards.admin import (
     ADMIN_USER_FREE_SUB,
     ADMIN_USER_PAID_ADD,
     ADMIN_USER_PAID_SUB,
-    ADMIN_USER_PREFIX,
     ADMIN_USER_UNBAN,
     admin_back_to_main,
     admin_broadcast_confirm_keyboard,
