@@ -238,14 +238,15 @@ def _run_llm_for_pdf_page(
     dpi = getattr(settings, "PDF_OCR_DPI", 200) or 200
     poppler_path = (getattr(settings, "POPPLER_PATH", None) or "").strip() or None
     try:
-        images = convert_from_bytes(
-            pdf_bytes,
-            dpi=dpi,
-            first_page=page_num,
-            last_page=page_num,
-            output_folder=temp_dir,
-            poppler_path=poppler_path,
-        )
+        kwargs: dict = {
+            "dpi": dpi,
+            "first_page": page_num,
+            "last_page": page_num,
+            "output_folder": temp_dir,
+        }
+        if poppler_path is not None:
+            kwargs["poppler_path"] = poppler_path
+        images = convert_from_bytes(pdf_bytes, **kwargs)
         if not images:
             return f"[Страница {page_num}: не удалось преобразовать]"
     except Exception as e:
@@ -564,7 +565,8 @@ def reset_free_limits_task() -> None:
             )
         )
         session.commit()
-        count = result.rowcount if result.rowcount >= 0 else "?"
+        rcount = getattr(result, "rowcount", None)
+        count = rcount if rcount is not None and rcount >= 0 else "?"
         logger.info("reset_free_limits_task: updated %s users, limit=%s", count, limit)
     except Exception as e:
         logger.exception("reset_free_limits_task failed: %s", e)

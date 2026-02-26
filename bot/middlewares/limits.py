@@ -38,6 +38,8 @@ class LimitsMiddleware(BaseMiddleware):
     ) -> Any:
         if not _is_document_event(event):
             return await handler(event, data)
+        if not isinstance(event, Message):
+            return await handler(event, data)
 
         session: Any = data.get("session")
         if not session:

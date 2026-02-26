@@ -97,7 +97,7 @@ async def on_policy_accepted(callback: CallbackQuery, session) -> None:
     user.is_agreed_to_policy = True
     user.policy_agreed_at = datetime.now(timezone.utc)
     reply_kbd = get_main_keyboard(is_admin=is_admin(callback.from_user.id, user))
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text("Спасибо! Теперь вы можете отправлять документы и фото.")
         await callback.message.answer(
             "Выберите действие:",

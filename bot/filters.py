@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import os
 import re
+from typing import cast
 
 from aiogram.filters import BaseFilter
 from aiogram.types import Message, CallbackQuery
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import User
 from config import get_settings
@@ -49,6 +51,7 @@ class IsAdminFilter(BaseFilter):
         if session is None:
             # Фильтр вызывается до инъекции session middleware в части сценариев — не считаем админом
             return False
+        session = cast(AsyncSession, session)
         res = await session.execute(select(User.is_admin).where(User.tg_id == user_tg.id))
         is_admin_flag = res.scalar_one_or_none()
         return bool(is_admin_flag)

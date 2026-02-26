@@ -25,14 +25,14 @@ class Settings(BaseSettings):
     )
 
     # Bot
-    BOT_TOKEN: str = Field(..., description="Telegram Bot API token")
+    BOT_TOKEN: str = Field(default="", description="Telegram Bot API token")
     WEBHOOK_PATH: str = Field(default="/webhook", description="Path for Telegram webhook")
     WEBHOOK_HOST: str | None = Field(default=None, description="Public host for webhook (e.g. https://bot.example.com)")
     WEBHOOK_SECRET_TOKEN: str | None = Field(default=None, description="Secret token for webhook validation")
 
     # Database
     DATABASE_URL: str = Field(
-        ...,
+        default="",
         description="PostgreSQL URL, e.g. postgresql+asyncpg://user:pass@localhost:5432/dbname",
     )
     DATABASE_URL_SYNC: str | None = Field(

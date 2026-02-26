@@ -60,6 +60,8 @@ class PolicyMiddleware(BaseMiddleware):
         session: Any = data.get("session")
         if not session:
             return await handler(event, data)
+        if not isinstance(event, (Message, CallbackQuery)):
+            return await handler(event, data)
 
         user = await self._get_user(event, session)
         if user is None:
@@ -69,7 +71,7 @@ class PolicyMiddleware(BaseMiddleware):
             if isinstance(event, Message) and event.text:
                 await event.answer("Сначала отправьте /start для регистрации.")
             elif isinstance(event, CallbackQuery):
-                if event.message:
+                if isinstance(event.message, Message):
                     await event.message.edit_text("Сначала отправьте /start.")
                 await event.answer()
             return
@@ -100,7 +102,7 @@ class PolicyMiddleware(BaseMiddleware):
         if isinstance(event, Message) and event.text:
             await event.answer(get_policy_text(), reply_markup=keyboard)
         elif isinstance(event, CallbackQuery):
-            if event.message:
+            if isinstance(event.message, Message):
                 await event.message.edit_text(get_policy_text(), reply_markup=keyboard)
             await event.answer()
         return

@@ -119,7 +119,7 @@ async def cmd_my_id(message: Message) -> None:
 async def admin_cb_main(callback: CallbackQuery, state: FSMContext) -> None:
     """Возврат в главное меню админки."""
     await state.clear()
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text("Админ-панель. Выберите раздел:", reply_markup=admin_main_menu())
     await callback.answer()
 
@@ -134,7 +134,7 @@ async def admin_cb_back(callback: CallbackQuery, state: FSMContext) -> None:
 async def admin_cb_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     """Отмена — сброс FSM и возврат в главное меню."""
     await state.clear()
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text("Действие отменено. Выберите раздел:", reply_markup=admin_main_menu())
     await callback.answer()
 
@@ -156,7 +156,7 @@ async def admin_cb_stats(callback: CallbackQuery, session) -> None:
         f"Оплачено (сумма): {total_paid} ₽\n\n"
         "Выгрузка в Excel:"
     )
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text(text, reply_markup=admin_stats_menu())
     await callback.answer()
 
@@ -167,14 +167,14 @@ async def admin_export_users(callback: CallbackQuery, session) -> None:
     await callback.answer("Формирую выгрузку...")
     try:
         file_bytes = await build_users_xlsx(session)
-        if callback.message:
+        if isinstance(callback.message, Message):
             await callback.message.answer_document(
                 BufferedInputFile(file_bytes, filename="users.xlsx"),
                 caption="Выгрузка пользователей",
             )
     except Exception as e:
         logger.exception("export users failed: %s", e)
-        if callback.message:
+        if isinstance(callback.message, Message):
             await callback.message.answer("Ошибка формирования выгрузки.")
 
 
@@ -184,14 +184,14 @@ async def admin_export_transactions(callback: CallbackQuery, session) -> None:
     await callback.answer("Формирую выгрузку...")
     try:
         file_bytes = await build_transactions_xlsx(session)
-        if callback.message:
+        if isinstance(callback.message, Message):
             await callback.message.answer_document(
                 BufferedInputFile(file_bytes, filename="transactions.xlsx"),
                 caption="Выгрузка транзакций",
             )
     except Exception as e:
         logger.exception("export transactions failed: %s", e)
-        if callback.message:
+        if isinstance(callback.message, Message):
             await callback.message.answer("Ошибка формирования выгрузки.")
 
 
@@ -201,14 +201,14 @@ async def admin_export_summary(callback: CallbackQuery, session) -> None:
     await callback.answer("Формирую выгрузку...")
     try:
         file_bytes = await build_summary_xlsx(session)
-        if callback.message:
+        if isinstance(callback.message, Message):
             await callback.message.answer_document(
                 BufferedInputFile(file_bytes, filename="summary.xlsx"),
                 caption="Сводка",
             )
     except Exception as e:
         logger.exception("export summary failed: %s", e)
-        if callback.message:
+        if isinstance(callback.message, Message):
             await callback.message.answer("Ошибка формирования выгрузки.")
 
 
@@ -218,7 +218,7 @@ async def admin_export_summary(callback: CallbackQuery, session) -> None:
 async def admin_cb_users(callback: CallbackQuery, state: FSMContext) -> None:
     """Раздел «Пользователи»: просим ввести tg_id или @username."""
     await state.set_state(AdminStates.waiting_user_query)
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text(
             "👥 Поиск пользователя.\nОтправьте <b>Telegram ID</b> (число) или <b>@username</b>.\n"
             "Для отмены нажмите кнопку ниже.",
@@ -231,7 +231,7 @@ async def admin_cb_users(callback: CallbackQuery, state: FSMContext) -> None:
 async def admin_cb_broadcast(callback: CallbackQuery, state: FSMContext) -> None:
     """Раздел «Рассылка»: просим отправить сообщение для рассылки."""
     await state.set_state(AdminStates.waiting_broadcast)
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text(
             "📢 Рассылка.\nОтправьте одно сообщение (текст, фото или видео) для рассылки всем пользователям.\n"
             "Для отмены нажмите кнопку ниже.",
@@ -283,11 +283,11 @@ async def admin_broadcast_confirm(callback: CallbackQuery, session, state: FSMCo
         broadcast_task.delay(text=text, photo_file_id=photo_file_id, video_file_id=video_file_id)
     except Exception as e:
         logger.exception("broadcast_task.delay failed: %s", e)
-        if callback.message:
+        if isinstance(callback.message, Message):
             await callback.message.edit_text("Ошибка запуска рассылки.")
         await callback.answer("Ошибка")
         return
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text("✅ Рассылка запущена. Сообщения отправляются в фоне.")
     await callback.answer("Рассылка запущена")
 
@@ -296,7 +296,7 @@ async def admin_broadcast_confirm(callback: CallbackQuery, session, state: FSMCo
 async def admin_broadcast_abort(callback: CallbackQuery, state: FSMContext) -> None:
     """Отмена рассылки."""
     await state.clear()
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text("Рассылка отменена. Выберите раздел:", reply_markup=admin_main_menu())
     await callback.answer()
 
@@ -326,7 +326,7 @@ async def admin_cb_settings(callback: CallbackQuery, session) -> None:
             val = str(getattr(cfg, key, ""))
         keys_with_values.append((key, label, val))
     text = "⚙️ Настройки (из БД, иначе из .env). Нажмите на параметр для изменения:"
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text(text, reply_markup=admin_settings_keyboard(keys_with_values))
     await callback.answer()
 
@@ -340,7 +340,7 @@ async def admin_cb_setting_edit(callback: CallbackQuery, state: FSMContext) -> N
         return
     await state.set_state(AdminStates.waiting_setting_value)
     await state.update_data(admin_setting_key=key)
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text(
             f"Введите новое значение для <b>{html_escape(key)}</b>. Для отмены нажмите кнопку.",
             reply_markup=admin_cancel_keyboard(),
@@ -468,7 +468,7 @@ async def admin_user_free_add(callback: CallbackQuery, state: FSMContext) -> Non
         return
     await state.set_state(AdminStates.waiting_limit_free)
     await state.update_data(admin_user_id=user_id, admin_limit_action="free_add")
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text(
             "Введите <b>число</b> — на сколько увеличить бесплатные лимиты. Для отмены нажмите кнопку.",
             reply_markup=admin_cancel_keyboard(),
@@ -484,7 +484,7 @@ async def admin_user_free_sub(callback: CallbackQuery, state: FSMContext) -> Non
         await callback.answer("Ошибка")
         return
     await state.update_data(admin_user_id=user_id, admin_limit_action="free_sub")
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text(
             "Введите <b>число</b> — на сколько уменьшить бесплатные лимиты.",
             reply_markup=admin_cancel_keyboard(),
@@ -500,7 +500,7 @@ async def admin_user_paid_add(callback: CallbackQuery, state: FSMContext) -> Non
         return
     await state.set_state(AdminStates.waiting_limit_paid)
     await state.update_data(admin_user_id=user_id, admin_limit_action="paid_add")
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text(
             "Введите <b>число</b> — на сколько увеличить платные лимиты.",
             reply_markup=admin_cancel_keyboard(),
@@ -516,7 +516,7 @@ async def admin_user_paid_sub(callback: CallbackQuery, state: FSMContext) -> Non
         return
     await state.set_state(AdminStates.waiting_limit_paid)
     await state.update_data(admin_user_id=user_id, admin_limit_action="paid_sub")
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_text(
             "Введите <b>число</b> — на сколько уменьшить платные лимиты.",
             reply_markup=admin_cancel_keyboard(),
@@ -617,7 +617,7 @@ async def admin_user_ban(callback: CallbackQuery, session) -> None:
     user.is_banned = True
     await session.commit()
     viewer_is_super = is_superadmin(callback.from_user.id) if callback.from_user else False
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_reply_markup(
             reply_markup=admin_user_profile_keyboard(
                 user_id=user.id,
@@ -644,7 +644,7 @@ async def admin_user_unban(callback: CallbackQuery, session) -> None:
     user.is_banned = False
     await session.commit()
     viewer_is_super = is_superadmin(callback.from_user.id) if callback.from_user else False
-    if callback.message:
+    if isinstance(callback.message, Message):
         await callback.message.edit_reply_markup(
             reply_markup=admin_user_profile_keyboard(
                 user_id=user.id,
@@ -659,11 +659,10 @@ async def admin_user_unban(callback: CallbackQuery, session) -> None:
 @router.callback_query(F.data.startswith(ADMIN_USER_PROMOTE), IsAdminFilter())
 async def admin_user_promote(callback: CallbackQuery, session) -> None:
     """Сделать пользователя администратором (только для суперадминов)."""
-    viewer_tg_id = callback.from_user.id if callback.from_user else None
-    if not callback.from_user or not is_superadmin(viewer_tg_id):
+    if not callback.from_user or not is_superadmin(callback.from_user.id):
         logger.info(
             "admin_user_promote: denied, viewer is not superadmin",
-            extra={"viewer_tg_id": viewer_tg_id},
+            extra={"viewer_tg_id": callback.from_user.id if callback.from_user else None},
         )
         await callback.answer("У вас нет прав на назначение администраторов.")
         return
@@ -683,9 +682,9 @@ async def admin_user_promote(callback: CallbackQuery, session) -> None:
     await session.commit()
     logger.info(
         "admin_user_promote: user promoted to admin",
-        extra={"target_tg_id": user.tg_id, "viewer_tg_id": viewer_tg_id},
+        extra={"target_tg_id": user.tg_id, "viewer_tg_id": callback.from_user.id if callback.from_user else None},
     )
-    if callback.message:
+    if isinstance(callback.message, Message):
         # Перерисовываем профиль, чтобы добавить пометку 👑 Администратор
         docs_count = await session.scalar(select(func.count(Document.id)).where(Document.user_id == user.id))
         purchased = user.balance.purchased_credits if user.balance else 0
@@ -738,7 +737,7 @@ async def admin_user_demote(callback: CallbackQuery, session) -> None:
     user.is_admin = False
     await session.commit()
     
-    if callback.message:
+    if isinstance(callback.message, Message):
         # Перерисовываем профиль (убираем пометку)
         docs_count = await session.scalar(select(func.count(Document.id)).where(Document.user_id == user.id))
         purchased = user.balance.purchased_credits if user.balance else 0
