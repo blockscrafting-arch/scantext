@@ -74,6 +74,8 @@ async def main() -> None:
 
     from redis.asyncio import Redis
     redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+    from bot.filters import set_admin_cache_redis
+    set_admin_cache_redis(redis_client)
 
     dp.message.middleware(ThrottlingMiddleware(redis=redis_client, rate_limit=1.5))
     dp.message.middleware(DbSessionMiddleware())

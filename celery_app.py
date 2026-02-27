@@ -115,18 +115,53 @@ http_client = httpx.Client(timeout=60.0, limits=httpx.Limits(max_keepalive_conne
 # Maximum file size allowed to process (default 20MB to protect memory)
 MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
 
+
+def _sanitize_error_message(raw: str, max_length: int = 500) -> str:
+    """
+    Удаляет из текста ошибки чувствительные данные (api_key, token, пути) перед записью в БД.
+    """
+    import re
+    if not raw or not isinstance(raw, str):
+        return ""
+    text = raw[: max_length * 2]
+    # Маскируем паттерны вида api_key=xxx, token=xxx, password=xxx
+    text = re.sub(
+        r"(api[_-]?key|token|password|secret|auth)\s*[:=]\s*[\w.-]+",
+        r"\1=[REDACTED]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    # Маскируем пути (Windows и Unix)
+    text = re.sub(r"[A-Za-z]:[\\/][^\s]*", "[PATH]", text)
+    text = re.sub(r"/[\w./-]+(?:\s|$)", "[PATH] ", text)
+    return text[:max_length]
+
+
 def _download_telegram_file(file_id: str) -> bytes:
     """Скачивает файл по file_id через Telegram Bot API."""
     token = settings.BOT_TOKEN
     r = http_client.get(f"https://api.telegram.org/bot{token}/getFile", params={"file_id": file_id})
     r.raise_for_status()
     file_info = r.json()["result"]
-    file_size = file_info.get("file_size", 0)
-    
-    if file_size > MAX_FILE_SIZE_BYTES:
+    file_size = file_info.get("file_size")
+
+    if file_size is not None and file_size > MAX_FILE_SIZE_BYTES:
         raise ValueError(f"File size ({file_size} bytes) exceeds the allowed limit of {MAX_FILE_SIZE_BYTES} bytes.")
-        
+
     path = file_info["file_path"]
+    if file_size is None:
+        # Telegram не вернул file_size — скачиваем потоком и проверяем размер
+        with http_client.stream("GET", f"https://api.telegram.org/file/bot{token}/{path}") as resp:
+            resp.raise_for_status()
+            chunks = []
+            total = 0
+            for chunk in resp.iter_bytes():
+                total += len(chunk)
+                if total > MAX_FILE_SIZE_BYTES:
+                    raise ValueError(f"File size exceeds the allowed limit of {MAX_FILE_SIZE_BYTES} bytes.")
+                chunks.append(chunk)
+        return b"".join(chunks)
+
     r2 = http_client.get(f"https://api.telegram.org/file/bot{token}/{path}")
     r2.raise_for_status()
     return r2.content
@@ -467,7 +502,7 @@ def process_document_task(self, document_id: int, file_id: str) -> None:
         ).scalar_one_or_none()
         if doc:
             doc.status = "error"
-            doc.error_message = str(e)[:500]
+            doc.error_message = _sanitize_error_message(str(e))
             is_llm_or_config_error = (
                 "openrouter" in str(e).lower()
                 or "api_key" in str(e).lower()
@@ -504,21 +539,19 @@ def process_document_task(self, document_id: int, file_id: str) -> None:
         session.close()
 
 
+BROADCAST_CHUNK_SIZE = 50
+
 @celery_app.task
-def broadcast_task(text: str = "", photo_file_id: str | None = None, video_file_id: str | None = None) -> None:
+def broadcast_chunk_task(
+    tg_ids: list,
+    text: str = "",
+    photo_file_id: str | None = None,
+    video_file_id: str | None = None,
+) -> None:
     """
-    Рассылает сообщение всем пользователям (is_agreed_to_policy=True, is_banned=False).
-    Один из: text, photo_file_id, video_file_id. Для фото/видео text — подпись.
+    Отправляет рассылку одному батчу пользователей (вызывается из broadcast_task).
     """
     import time
-    session = SyncSession()
-    try:
-        result = session.execute(
-            select(User.tg_id).where(User.is_agreed_to_policy).where(~User.is_banned)
-        )
-        tg_ids = [row[0] for row in result.fetchall()]
-    finally:
-        session.close()
     for chat_id in tg_ids:
         try:
             if photo_file_id:
@@ -530,6 +563,27 @@ def broadcast_task(text: str = "", photo_file_id: str | None = None, video_file_
         except Exception as e:
             logger.warning("broadcast to %s failed: %s", chat_id, e)
         time.sleep(0.05)
+
+
+@celery_app.task
+def broadcast_task(text: str = "", photo_file_id: str | None = None, video_file_id: str | None = None) -> None:
+    """
+    Рассылает сообщение всем пользователям (is_agreed_to_policy=True, is_banned=False).
+    Разбивает получателей на батчи и запускает broadcast_chunk_task для каждого,
+    чтобы не блокировать воркер одной длинной задачей.
+    """
+    session = SyncSession()
+    try:
+        result = session.execute(
+            select(User.tg_id).where(User.is_agreed_to_policy).where(~User.is_banned)
+        )
+        tg_ids = [row[0] for row in result.fetchall()]
+    finally:
+        session.close()
+    for i in range(0, len(tg_ids), BROADCAST_CHUNK_SIZE):
+        chunk = tg_ids[i : i + BROADCAST_CHUNK_SIZE]
+        broadcast_chunk_task.delay(chunk, text, photo_file_id, video_file_id)
+    logger.info("broadcast_task: dispatched %s chunks for %s users", (len(tg_ids) + BROADCAST_CHUNK_SIZE - 1) // BROADCAST_CHUNK_SIZE, len(tg_ids))
 
 
 @celery_app.task

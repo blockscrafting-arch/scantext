@@ -3,6 +3,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 import logging
 from typing import Any
@@ -59,12 +60,15 @@ async def create_payment(
         "metadata": metadata or {},
     }
     headers = {"Idempotence-Key": idempotence_key, "Content-Type": "application/json"}
-    
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.post(url, json=payload, auth=auth, headers=headers)
+        if r.status_code == 500:
+            await asyncio.sleep(1.5)
+            r = await client.post(url, json=payload, auth=auth, headers=headers)
         r.raise_for_status()
         data = r.json()
-        
+
     conf = data.get("confirmation", {})
     return PaymentCreateResponse(
         id=data["id"],
@@ -115,7 +119,39 @@ class YooKassaPaymentObject(BaseModel):
 
 
 class YooKassaWebhookPayload(BaseModel):
-    """Тело POST-запроса уведомления ЮKassa."""
+    """Тело POST-запроса уведомления ЮKassa (платёж)."""
     type: str = "notification"
     event: str
     object: YooKassaPaymentObject
+
+
+# --- Модели для уведомления refund.succeeded ---
+
+
+class YooKassaRefundAmount(BaseModel):
+    """Сумма возврата."""
+    value: str
+    currency: str = "RUB"
+
+
+class YooKassaRefundObject(BaseModel):
+    """Объект refund в теле уведомления refund.succeeded."""
+
+    id: str
+    payment_id: str
+    status: str
+    amount: YooKassaRefundAmount | None = None
+
+    @field_validator("id", "payment_id", mode="before")
+    @classmethod
+    def coerce_to_str(cls, v: Any) -> str:
+        if v is None:
+            return ""
+        return str(v).strip() or ""
+
+
+class YooKassaRefundWebhookPayload(BaseModel):
+    """Тело POST-запроса уведомления ЮKassa (возврат)."""
+    type: str = "notification"
+    event: str = "refund.succeeded"
+    object: YooKassaRefundObject

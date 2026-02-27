@@ -17,7 +17,7 @@ from sqlalchemy.orm import selectinload
 from app.models import Document, Transaction, User, UserBalance
 from app.services.export import build_summary_xlsx, build_transactions_xlsx, build_users_xlsx
 from app.services.settings import get_setting, set_setting
-from bot.filters import IsAdminFilter, is_superadmin
+from bot.filters import IsAdminFilter, invalidate_admin_cache, is_superadmin
 from config import get_settings as get_cfg
 from bot.keyboards.admin import (
     ADMIN_BACK,
@@ -680,6 +680,7 @@ async def admin_user_promote(callback: CallbackQuery, session) -> None:
         
     user.is_admin = True
     await session.commit()
+    await invalidate_admin_cache(user.tg_id)
     await callback.answer("Назначен администратором")
     logger.info(
         "admin_user_promote: user promoted to admin",
@@ -736,6 +737,7 @@ async def admin_user_demote(callback: CallbackQuery, session) -> None:
         
     user.is_admin = False
     await session.commit()
+    await invalidate_admin_cache(user.tg_id)
     await callback.answer("Права администратора сняты")
 
     if isinstance(callback.message, Message):

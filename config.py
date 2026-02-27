@@ -50,7 +50,9 @@ class Settings(BaseSettings):
     # YooKassa
     YOOKASSA_SHOP_ID: str = Field(default="", description="YooKassa shop ID")
     YOOKASSA_SECRET_KEY: str = Field(default="", description="YooKassa secret key")
-    YOOKASSA_WEBHOOK_SECRET: str | None = Field(default=None, description="Optional webhook secret for verification")
+    # Не используется в текущем сценарии: API ЮKassa не передаёт подпись в HTTP-уведомлениях;
+    # верификация выполняется через IP allowlist и GET /payments/{id}.
+    YOOKASSA_WEBHOOK_SECRET: str | None = Field(default=None, description="Reserved; not used for webhook verification in current YooKassa API")
     YOOKASSA_RETURN_URL: str = Field(default="https://t.me/YourBot", description="Return URL after payment")
 
     # Limits & business

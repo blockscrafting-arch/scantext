@@ -53,7 +53,7 @@ async def build_transactions_xlsx(session: AsyncSession) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Транзакции"
-    ws.append(["id", "created_at", "user_id", "tg_id", "amount", "currency", "status", "description"])
+    ws.append(["id", "created_at", "user_id", "tg_id", "amount", "currency", "status", "yookassa_payment_id", "description"])
     for txn, tg_id in rows:
         ws.append([
             txn.id,
@@ -63,6 +63,7 @@ async def build_transactions_xlsx(session: AsyncSession) -> bytes:
             float(txn.amount),
             txn.currency,
             txn.status,
+            txn.yookassa_payment_id or "",
             txn.description or "",
         ])
     buf = BytesIO()

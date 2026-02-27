@@ -1,4 +1,4 @@
-# Продакшен-оверлей: не пробрасывать порты db/redis наружу, пароль БД из .env, nginx 443.
+# Продакшен-оверлей: не пробрасывать порты db/redis наружу, пароль БД из .env.
 # Запуск: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 # В .env задать: POSTGRES_PASSWORD=сильный_пароль
 
@@ -31,12 +31,3 @@ services:
       DATABASE_URL_SYNC: postgresql://elenabot:${POSTGRES_PASSWORD:-elenabot_secret}@db:5432/elenabot
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
-
-  nginx:
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./letsencrypt-webroot:/var/www/html:ro   # для certbot --webroot (ACME challenge)
-      - /etc/letsencrypt:/etc/letsencrypt:ro
