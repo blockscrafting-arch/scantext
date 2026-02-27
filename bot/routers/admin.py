@@ -56,10 +56,10 @@ logger = logging.getLogger(__name__)
 router = Router(name="admin")
 
 
-def _admin_denied_message(tg_id: int) -> str:
+def _admin_denied_message() -> str:
     return (
-        f"Доступ только для администраторов. Ваш Telegram ID: {tg_id} — "
-        "добавьте его в ADMIN_TG_IDS в .env и перезапустите бота."
+        "У вас нет доступа к этому разделу. "
+        "Если вы должны иметь доступ, обратитесь к администратору."
     )
 
 
@@ -93,23 +93,23 @@ async def cmd_admin(message: Message, session) -> None:
 async def admin_denied_button(message: Message) -> None:
     """Не админ нажал кнопку «Админ-панель» — показать отказ."""
     if message.from_user:
-        await message.answer(_admin_denied_message(message.from_user.id))
+        await message.answer(_admin_denied_message())
 
 
 @router.message(Command("admin"))
 async def admin_denied_command(message: Message) -> None:
     """Не админ ввёл /admin — показать отказ (хэндлер без IsAdminFilter срабатывает после провала фильтра)."""
     if message.from_user:
-        await message.answer(_admin_denied_message(message.from_user.id))
+        await message.answer(_admin_denied_message())
 
 
 @router.message(Command("my_id"))
 async def cmd_my_id(message: Message) -> None:
-    """Показывает Telegram ID для настройки ADMIN_TG_IDS."""
+    """Показывает Telegram ID пользователя."""
     if message.from_user:
         await message.answer(
             f"Ваш Telegram ID: <code>{message.from_user.id}</code>\n"
-            "Добавьте в .env: ADMIN_TG_IDS=" + str(message.from_user.id)
+            "При необходимости сообщите его администратору."
         )
 
 
@@ -135,7 +135,7 @@ async def admin_cb_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     """Отмена — сброс FSM и возврат в главное меню."""
     await state.clear()
     if isinstance(callback.message, Message):
-        await callback.message.edit_text("Действие отменено. Выберите раздел:", reply_markup=admin_main_menu())
+        await callback.message.edit_text("Отменено. Выберите раздел:", reply_markup=admin_main_menu())
     await callback.answer()
 
 
@@ -164,7 +164,7 @@ async def admin_cb_stats(callback: CallbackQuery, session) -> None:
 @router.callback_query(F.data == ADMIN_EXPORT_USERS, IsAdminFilter())
 async def admin_export_users(callback: CallbackQuery, session) -> None:
     """Выгрузка списка пользователей в Excel."""
-    await callback.answer("Формирую выгрузку...")
+    await callback.answer("Подготовка выгрузки…")
     try:
         file_bytes = await build_users_xlsx(session)
         if isinstance(callback.message, Message):
@@ -175,13 +175,13 @@ async def admin_export_users(callback: CallbackQuery, session) -> None:
     except Exception as e:
         logger.exception("export users failed: %s", e)
         if isinstance(callback.message, Message):
-            await callback.message.answer("Ошибка формирования выгрузки.")
+            await callback.message.answer("Не удалось сформировать выгрузку. Попробуйте позже.")
 
 
 @router.callback_query(F.data == ADMIN_EXPORT_TXN, IsAdminFilter())
 async def admin_export_transactions(callback: CallbackQuery, session) -> None:
     """Выгрузка транзакций в Excel."""
-    await callback.answer("Формирую выгрузку...")
+    await callback.answer("Подготовка выгрузки…")
     try:
         file_bytes = await build_transactions_xlsx(session)
         if isinstance(callback.message, Message):
@@ -192,13 +192,13 @@ async def admin_export_transactions(callback: CallbackQuery, session) -> None:
     except Exception as e:
         logger.exception("export transactions failed: %s", e)
         if isinstance(callback.message, Message):
-            await callback.message.answer("Ошибка формирования выгрузки.")
+            await callback.message.answer("Не удалось сформировать выгрузку. Попробуйте позже.")
 
 
 @router.callback_query(F.data == ADMIN_EXPORT_SUMMARY, IsAdminFilter())
 async def admin_export_summary(callback: CallbackQuery, session) -> None:
     """Выгрузка сводки в Excel."""
-    await callback.answer("Формирую выгрузку...")
+    await callback.answer("Подготовка выгрузки…")
     try:
         file_bytes = await build_summary_xlsx(session)
         if isinstance(callback.message, Message):
@@ -209,7 +209,7 @@ async def admin_export_summary(callback: CallbackQuery, session) -> None:
     except Exception as e:
         logger.exception("export summary failed: %s", e)
         if isinstance(callback.message, Message):
-            await callback.message.answer("Ошибка формирования выгрузки.")
+            await callback.message.answer("Не удалось сформировать выгрузку. Попробуйте позже.")
 
 
 # —— Заглушки для остальных разделов (реализуем далее) ——
@@ -284,8 +284,8 @@ async def admin_broadcast_confirm(callback: CallbackQuery, session, state: FSMCo
     except Exception as e:
         logger.exception("broadcast_task.delay failed: %s", e)
         if isinstance(callback.message, Message):
-            await callback.message.edit_text("Ошибка запуска рассылки.")
-        await callback.answer("Ошибка")
+            await callback.message.edit_text("Не удалось запустить рассылку. Попробуйте позже.")
+        await callback.answer("Не удалось выполнить действие.")
         return
     if isinstance(callback.message, Message):
         await callback.message.edit_text("✅ Рассылка запущена. Сообщения отправляются в фоне.")
@@ -325,7 +325,7 @@ async def admin_cb_settings(callback: CallbackQuery, session) -> None:
         else:
             val = str(getattr(cfg, key, ""))
         keys_with_values.append((key, label, val))
-    text = "⚙️ Настройки (из БД, иначе из .env). Нажмите на параметр для изменения:"
+    text = "⚙️ Настройки. Нажмите параметр для изменения:"
     if isinstance(callback.message, Message):
         await callback.message.edit_text(text, reply_markup=admin_settings_keyboard(keys_with_values))
     await callback.answer()
@@ -336,7 +336,7 @@ async def admin_cb_setting_edit(callback: CallbackQuery, state: FSMContext) -> N
     """Редактирование настройки: запрос нового значения."""
     key = (callback.data or "")[len(ADMIN_SETTING_EDIT_PREFIX):].strip()
     if not key or not any(k == key for k, _, _ in SETTINGS_KEYS):
-        await callback.answer("Неизвестный параметр")
+        await callback.answer("Такого параметра нет. Выберите из списка.")
         return
     await state.set_state(AdminStates.waiting_setting_value)
     await state.update_data(admin_setting_key=key)
@@ -355,7 +355,7 @@ async def admin_setting_value_message(message: Message, session, state: FSMConte
     key = data.get("admin_setting_key")
     if not key:
         await state.clear()
-        await message.answer("Сессия истекла.", reply_markup=admin_back_to_main())
+        await message.answer("Время действия истекло. Выберите действие заново.", reply_markup=admin_back_to_main())
         return
     typ = next((t for k, _, t in SETTINGS_KEYS if k == key), "str")
     raw = (message.text or "").strip()
@@ -412,7 +412,7 @@ async def admin_user_query_message(message: Message, session, state: FSMContext)
         except ValueError:
             pass
     if not user:
-        await message.answer("Пользователь не найден. Попробуйте другой ID или @username.")
+        await message.answer("Пользователь не найден. Проверьте ID или имя.")
         return
     await state.clear()
     docs_count = await session.scalar(select(func.count(Document.id)).where(Document.user_id == user.id))
@@ -464,7 +464,7 @@ async def admin_user_free_add(callback: CallbackQuery, state: FSMContext) -> Non
     """Добавить бесплатные лимиты: просим ввести количество."""
     user_id = _parse_user_id_from_callback(callback.data or "", ADMIN_USER_FREE_ADD)
     if user_id is None:
-        await callback.answer("Ошибка")
+        await callback.answer("Не удалось выполнить действие.")
         return
     await state.set_state(AdminStates.waiting_limit_free)
     await state.update_data(admin_user_id=user_id, admin_limit_action="free_add")
@@ -481,7 +481,7 @@ async def admin_user_free_sub(callback: CallbackQuery, state: FSMContext) -> Non
     await state.set_state(AdminStates.waiting_limit_free)
     user_id = _parse_user_id_from_callback(callback.data or "", ADMIN_USER_FREE_SUB)
     if user_id is None:
-        await callback.answer("Ошибка")
+        await callback.answer("Не удалось выполнить действие.")
         return
     await state.update_data(admin_user_id=user_id, admin_limit_action="free_sub")
     if isinstance(callback.message, Message):
@@ -496,7 +496,7 @@ async def admin_user_free_sub(callback: CallbackQuery, state: FSMContext) -> Non
 async def admin_user_paid_add(callback: CallbackQuery, state: FSMContext) -> None:
     user_id = _parse_user_id_from_callback(callback.data or "", ADMIN_USER_PAID_ADD)
     if user_id is None:
-        await callback.answer("Ошибка")
+        await callback.answer("Не удалось выполнить действие.")
         return
     await state.set_state(AdminStates.waiting_limit_paid)
     await state.update_data(admin_user_id=user_id, admin_limit_action="paid_add")
@@ -512,7 +512,7 @@ async def admin_user_paid_add(callback: CallbackQuery, state: FSMContext) -> Non
 async def admin_user_paid_sub(callback: CallbackQuery, state: FSMContext) -> None:
     user_id = _parse_user_id_from_callback(callback.data or "", ADMIN_USER_PAID_SUB)
     if user_id is None:
-        await callback.answer("Ошибка")
+        await callback.answer("Не удалось выполнить действие.")
         return
     await state.set_state(AdminStates.waiting_limit_paid)
     await state.update_data(admin_user_id=user_id, admin_limit_action="paid_sub")
@@ -532,7 +532,7 @@ async def admin_limit_free_apply(message: Message, session, state: FSMContext) -
     action = data.get("admin_limit_action")
     if user_id is None or action not in ("free_add", "free_sub"):
         await state.clear()
-        await message.answer("Сессия истекла. Выберите пользователя снова.", reply_markup=admin_back_to_main())
+        await message.answer("Время действия истекло. Выберите действие заново.", reply_markup=admin_back_to_main())
         return
     try:
         delta = int((message.text or "").strip())
@@ -546,7 +546,7 @@ async def admin_limit_free_apply(message: Message, session, state: FSMContext) -
     user = result.scalar_one_or_none()
     if not user:
         await state.clear()
-        await message.answer("Пользователь не найден.")
+        await message.answer("Пользователь не найден. Проверьте ID или имя.")
         return
     if action == "free_add":
         user.free_limits_remaining += delta
@@ -568,7 +568,7 @@ async def admin_limit_paid_apply(message: Message, session, state: FSMContext) -
     action = data.get("admin_limit_action")
     if user_id is None or action not in ("paid_add", "paid_sub"):
         await state.clear()
-        await message.answer("Сессия истекла. Выберите пользователя снова.", reply_markup=admin_back_to_main())
+        await message.answer("Время действия истекло. Выберите действие заново.", reply_markup=admin_back_to_main())
         return
     try:
         delta = int((message.text or "").strip())
@@ -584,7 +584,7 @@ async def admin_limit_paid_apply(message: Message, session, state: FSMContext) -
     user = result.scalar_one_or_none()
     if not user:
         await state.clear()
-        await message.answer("Пользователь не найден.")
+        await message.answer("Пользователь не найден. Проверьте ID или имя.")
         return
     if user.balance is None:
         user.balance = UserBalance(user_id=user.id)
@@ -607,12 +607,12 @@ async def admin_user_ban(callback: CallbackQuery, session) -> None:
     """Заблокировать пользователя."""
     user_id = _parse_user_id_from_callback(callback.data or "", ADMIN_USER_BAN)
     if user_id is None:
-        await callback.answer("Ошибка")
+        await callback.answer("Не удалось выполнить действие.")
         return
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        await callback.answer("Пользователь не найден")
+        await callback.answer("Пользователь не найден. Проверьте ID или имя.")
         return
     user.is_banned = True
     await session.commit()
@@ -634,12 +634,12 @@ async def admin_user_unban(callback: CallbackQuery, session) -> None:
     """Разблокировать пользователя."""
     user_id = _parse_user_id_from_callback(callback.data or "", ADMIN_USER_UNBAN)
     if user_id is None:
-        await callback.answer("Ошибка")
+        await callback.answer("Не удалось выполнить действие.")
         return
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        await callback.answer("Пользователь не найден")
+        await callback.answer("Пользователь не найден. Проверьте ID или имя.")
         return
     user.is_banned = False
     await session.commit()
@@ -669,17 +669,18 @@ async def admin_user_promote(callback: CallbackQuery, session) -> None:
         
     user_id = _parse_user_id_from_callback(callback.data or "", ADMIN_USER_PROMOTE)
     if user_id is None:
-        await callback.answer("Ошибка")
+        await callback.answer("Не удалось выполнить действие.")
         return
         
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        await callback.answer("Пользователь не найден")
+        await callback.answer("Пользователь не найден. Проверьте ID или имя.")
         return
         
     user.is_admin = True
     await session.commit()
+    await callback.answer("Назначен администратором")
     logger.info(
         "admin_user_promote: user promoted to admin",
         extra={"target_tg_id": user.tg_id, "viewer_tg_id": callback.from_user.id if callback.from_user else None},
@@ -713,7 +714,6 @@ async def admin_user_promote(callback: CallbackQuery, session) -> None:
                 is_viewer_superadmin=True
             )
         )
-    await callback.answer("Пользователь назначен администратором")
 
 
 @router.callback_query(F.data.startswith(ADMIN_USER_DEMOTE), IsAdminFilter())
@@ -725,18 +725,19 @@ async def admin_user_demote(callback: CallbackQuery, session) -> None:
         
     user_id = _parse_user_id_from_callback(callback.data or "", ADMIN_USER_DEMOTE)
     if user_id is None:
-        await callback.answer("Ошибка")
+        await callback.answer("Не удалось выполнить действие.")
         return
         
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        await callback.answer("Пользователь не найден")
+        await callback.answer("Пользователь не найден. Проверьте ID или имя.")
         return
         
     user.is_admin = False
     await session.commit()
-    
+    await callback.answer("Права администратора сняты")
+
     if isinstance(callback.message, Message):
         # Перерисовываем профиль (убираем пометку)
         docs_count = await session.scalar(select(func.count(Document.id)).where(Document.user_id == user.id))
@@ -765,4 +766,3 @@ async def admin_user_demote(callback: CallbackQuery, session) -> None:
                 is_viewer_superadmin=True
             )
         )
-    await callback.answer("Пользователь убран из администраторов")

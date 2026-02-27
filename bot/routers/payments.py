@@ -78,7 +78,7 @@ async def _do_buy(message: Message, session) -> bool:
         logger.exception("YooKassa create_payment failed: %s", e)
         session.delete(txn)
         await session.commit()
-        await message.answer("Ошибка создания платежа. Попробуйте позже.")
+        await message.answer("Не удалось создать платёж. Попробуйте позже.")
         return False
         
     # Сохраняем payment_id

@@ -12,6 +12,7 @@ from aiogram.types import Message, CallbackQuery
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.db as db_module
 from app.models import User
 from config import get_settings
 
@@ -36,22 +37,27 @@ def is_admin(tg_id: int, user: User | None = None) -> bool:
 
 class IsAdminFilter(BaseFilter):
     """Фильтр: только администраторы (для Message и CallbackQuery).
-    Session может отсутствовать при проверке фильтра (порядок вызова в aiogram),
-    тогда проверяем только суперадмина из .env.
+    Session может отсутствовать при проверке фильтра (inner middleware идёт после фильтров),
+    тогда открываем разовую сессию и проверяем User.is_admin в БД.
     """
 
     async def __call__(self, event: Message | CallbackQuery, **kwargs: object) -> bool:
         user_tg = event.from_user
         if user_tg is None:
             return False
-        # Суперадмины из .env — без БД (работает даже если session ещё не в kwargs)
         if is_superadmin(user_tg.id):
             return True
         session = kwargs.get("session")
-        if session is None:
-            # Фильтр вызывается до инъекции session middleware в части сценариев — не считаем админом
+        if session is not None:
+            session = cast(AsyncSession, session)
+            res = await session.execute(select(User.is_admin).where(User.tg_id == user_tg.id))
+            is_admin_flag = res.scalar_one_or_none()
+            return bool(is_admin_flag)
+        # Фильтр вызывается до инъекции session — проверяем is_admin через разовую сессию
+        factory = getattr(db_module, "async_session_factory", None)
+        if factory is None:
             return False
-        session = cast(AsyncSession, session)
-        res = await session.execute(select(User.is_admin).where(User.tg_id == user_tg.id))
-        is_admin_flag = res.scalar_one_or_none()
-        return bool(is_admin_flag)
+        async with factory() as one_off:
+            res = await one_off.execute(select(User.is_admin).where(User.tg_id == user_tg.id))
+            is_admin_flag = res.scalar_one_or_none()
+            return bool(is_admin_flag)

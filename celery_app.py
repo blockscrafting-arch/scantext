@@ -484,21 +484,15 @@ def process_document_task(self, document_id: int, file_id: str) -> None:
             try:
                 if doc.user:
                     if is_llm_or_config_error:
-                        err_lower = str(e).lower()
-                        if "api_key" in err_lower or "not set" in err_lower:
-                            _send_telegram_message(
-                                doc.user.tg_id,
-                                "Не настроен ключ OpenRouter (OPENROUTER_API_KEY в .env). "
-                                "Обратитесь к администратору. Ваш лимит возвращён.",
-                            )
-                        else:
-                            _send_telegram_message(
-                                doc.user.tg_id,
-                                "Сервис распознавания (AI) временно недоступен или превышен лимит запросов. "
-                                "Ваш лимит возвращён. Попробуйте позже или обратитесь к администратору.",
-                            )
+                        _send_telegram_message(
+                            doc.user.tg_id,
+                            "Сервис распознавания временно недоступен. Обратитесь к администратору. Ваш лимит возвращён.",
+                        )
                     else:
-                        _send_telegram_message(doc.user.tg_id, f"Ошибка обработки: {str(e)[:200]}", parse_mode=None)
+                        _send_telegram_message(
+                            doc.user.tg_id,
+                            "Не удалось обработать документ. Ваш лимит возвращён. Попробуйте позже или обратитесь в поддержку.",
+                        )
             except Exception:
                 pass
             if is_llm_or_config_error:

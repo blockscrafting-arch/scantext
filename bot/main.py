@@ -45,7 +45,12 @@ logger = logging.getLogger(__name__)
 
 async def main() -> None:
     settings = get_settings()
-    
+
+    if not (settings.BOT_TOKEN or "").strip():
+        raise RuntimeError("BOT_TOKEN is required. Set it in .env.")
+    if not (settings.DATABASE_URL or "").strip():
+        raise RuntimeError("DATABASE_URL is required. Set it in .env.")
+
     if settings.SENTRY_DSN:
         import sentry_sdk
         sentry_sdk.init(
