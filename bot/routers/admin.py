@@ -372,17 +372,7 @@ async def admin_setting_value_message(message: Message, session, state: FSMConte
     await set_setting(session, key, val)
     await session.commit()
     await state.clear()
-    
-    # Если изменили текст About, попробуем обновить его в Telegram API (описание бота)
-    if key == "BOT_ABOUT_TEXT" and message.bot:
-        try:
-            await message.bot.set_my_description(description=val)
-            await message.bot.set_my_short_description(short_description=val[:120])
-        except Exception as e:
-            logger.warning("Failed to update bot description in Telegram API: %s", e)
-            await message.answer(f"Сохранено в БД, но не удалось обновить описание в самом Telegram: {e}")
-            return
-            
+
     await message.answer(f"Сохранено: {html_escape(key)} = {html_escape(val)}", reply_markup=admin_back_to_main())
 
 
