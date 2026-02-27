@@ -16,6 +16,7 @@ from sqlalchemy import delete, func, select
 from app.models import Transaction, User
 from app.services.settings import get_pack_price, get_pack_size
 from app.yookassa_service import create_payment
+from config import get_settings
 
 router = Router(name="payments")
 logger = logging.getLogger(__name__)
@@ -78,7 +79,21 @@ async def _do_buy(message: Message, session) -> bool:
         logger.exception("YooKassa create_payment failed: %s", e)
         await session.execute(delete(Transaction).where(Transaction.id == txn.id))
         await session.commit()
-        await message.answer("Не удалось создать платёж. Попробуйте позже.")
+        demo_url = get_settings().DEMO_PAYMENT_URL
+        if demo_url:
+            # Режим для скриншота модерации: показываем экран с ценой и кнопкой «Оплатить»
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Оплатить", url=demo_url)],
+                ]
+            )
+            await message.answer(
+                f"Оплата {pack_price} ₽ — пакет из {pack_size} страниц.\n"
+                "После оплаты баланс пополнится автоматически.",
+                reply_markup=keyboard,
+            )
+        else:
+            await message.answer("Не удалось создать платёж. Попробуйте позже.")
         return False
         
     # Сохраняем payment_id

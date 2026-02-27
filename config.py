@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     # верификация выполняется через IP allowlist и GET /payments/{id}.
     YOOKASSA_WEBHOOK_SECRET: str | None = Field(default=None, description="Reserved; not used for webhook verification in current YooKassa API")
     YOOKASSA_RETURN_URL: str = Field(default="https://t.me/YourBot", description="Return URL after payment")
+    # Для скриншота модерации: при ошибке создания платежа (нет ключей / 401) показать экран с ценой и кнопкой «Оплатить» с этой ссылкой (например https://t.me/YourBot). После прохождения модерации — удалить или оставить пустым.
+    DEMO_PAYMENT_URL: str | None = Field(default=None, description="If set, on YooKassa error show payment screen with this button URL for moderation screenshot")
 
     # Limits & business
     BOT_ABOUT_TEXT: str = Field(
