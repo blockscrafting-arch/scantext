@@ -24,8 +24,12 @@ _DEFAULT_OFFER_URL = "https://telegra.ph/Polzovatelskoe-soglashenie-02-23-17"
 _DEFAULT_CONSENT_URL = "https://telegra.ph/SOGLASIE-NA-OBRABOTKU-PERSONALNYH-DANNYH-02-23-7"
 
 
-def get_policy_text() -> str:
-    """Возвращает текст политики с ссылками из конфига или fallback на telegra.ph."""
+def get_policy_text(prefix: str | None = None) -> str:
+    """Возвращает текст политики с ссылками из конфига или fallback на telegra.ph.
+
+    Args:
+        prefix: при наличии добавляется в начало текста (например, для случая «файл без согласия»).
+    """
     from html import escape as html_escape
     settings = get_settings()
     privacy_url = (settings.PRIVACY_POLICY_URL or "").strip() or _DEFAULT_PRIVACY_URL
@@ -34,7 +38,7 @@ def get_policy_text() -> str:
     safe_privacy = html_escape(privacy_url, quote=True)
     safe_terms = html_escape(terms_url, quote=True)
     safe_consent = html_escape(consent_url, quote=True)
-    return (
+    base = (
         "Для использования бота необходимо принять Политику конфиденциальности и Оферту (Условия использования).\n\n"
         "Отправляя персональные данные (фото, документы) и совершая платежи, вы даете Согласие на обработку данных "
         "в соответствии с 152-ФЗ и нашей политикой.\n\n"
@@ -42,6 +46,7 @@ def get_policy_text() -> str:
         f"📄 <a href='{safe_terms}'>Пользовательское соглашение</a>\n"
         f"📄 <a href='{safe_consent}'>Согласие на обработку ПД (152-ФЗ)</a>"
     )
+    return (prefix + base) if prefix else base
 
 
 class PolicyMiddleware(BaseMiddleware):
@@ -101,6 +106,11 @@ class PolicyMiddleware(BaseMiddleware):
         )
         if isinstance(event, Message) and event.text:
             await event.answer(get_policy_text(), reply_markup=keyboard)
+        elif isinstance(event, Message) and (event.photo or event.document):
+            await event.answer(
+                get_policy_text(prefix="Бот не работает без вашего согласия.\n\n"),
+                reply_markup=keyboard,
+            )
         elif isinstance(event, CallbackQuery):
             if isinstance(event.message, Message):
                 await event.message.edit_text(get_policy_text(), reply_markup=keyboard)
