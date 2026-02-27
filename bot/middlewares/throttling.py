@@ -16,12 +16,18 @@ logger = logging.getLogger(__name__)
 class ThrottlingMiddleware(BaseMiddleware):
     """
     Ограничивает частоту запросов от пользователя.
-    Например, не более 1 сообщения в секунду.
+    Не более max_requests сообщений в течение (rate_limit + 1) секунд.
     """
 
-    def __init__(self, redis: Redis, rate_limit: float = 1.0) -> None:
+    def __init__(
+        self,
+        redis: Redis,
+        rate_limit: float = 2.0,
+        max_requests: int = 5,
+    ) -> None:
         self.redis = redis
         self.rate_limit = rate_limit
+        self.max_requests = max_requests
 
     async def __call__(
         self,
@@ -53,7 +59,7 @@ class ThrottlingMiddleware(BaseMiddleware):
             logger.warning("Throttling Redis error, passing update through: %s", e)
             return await handler(event, data)
 
-        if count > 1:
+        if count > self.max_requests:
             await event.answer("Слишком много запросов. Пожалуйста, подождите.")
             return
 

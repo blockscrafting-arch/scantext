@@ -77,7 +77,9 @@ async def main() -> None:
     from bot.filters import set_admin_cache_redis
     set_admin_cache_redis(redis_client)
 
-    dp.message.middleware(ThrottlingMiddleware(redis=redis_client, rate_limit=1.5))
+    dp.message.middleware(
+    ThrottlingMiddleware(redis=redis_client, rate_limit=3.0, max_requests=5)
+)
     dp.message.middleware(DbSessionMiddleware())
     dp.message.middleware(PolicyMiddleware())
     dp.message.middleware(LimitsMiddleware())
