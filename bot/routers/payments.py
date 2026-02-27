@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.models import Transaction, User
 from app.services.settings import get_pack_price, get_pack_size
@@ -76,7 +76,7 @@ async def _do_buy(message: Message, session) -> bool:
         )
     except Exception as e:
         logger.exception("YooKassa create_payment failed: %s", e)
-        session.delete(txn)
+        await session.execute(delete(Transaction).where(Transaction.id == txn.id))
         await session.commit()
         await message.answer("Не удалось создать платёж. Попробуйте позже.")
         return False
