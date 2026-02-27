@@ -87,6 +87,17 @@ YOOKASSA_IPS = [
     ipaddress.ip_network("2a02:5180::/32"),
 ]
 
+# Заголовки реального IP читаем только если peer — доверенный прокси.
+# Это снижает риск spoofing через X-Real-IP/X-Forwarded-For.
+TRUSTED_PROXY_NETS = [
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("fc00::/7"),
+]
+
 
 def _is_valid_yookassa_ip(ip_str: str | None) -> bool:
     """Проверяет, входит ли IP в список разрешённых подсетей ЮKassa."""
@@ -100,6 +111,42 @@ def _is_valid_yookassa_ip(ip_str: str | None) -> bool:
     except ValueError:
         pass
     return False
+
+
+def _is_trusted_proxy_ip(ip_str: str | None) -> bool:
+    """Проверяет, что peer IP относится к доверенному proxy/network."""
+    if not ip_str or not isinstance(ip_str, str):
+        return False
+    try:
+        ip = ipaddress.ip_address(ip_str.strip())
+        return any(ip in net for net in TRUSTED_PROXY_NETS)
+    except ValueError:
+        return False
+
+
+def _extract_effective_client_ip(request: web.Request) -> str | None:
+    """
+    Возвращает IP клиента для валидации:
+    - если peer IP уже из сетей ЮKassa — берём его;
+    - если peer — доверенный прокси, берём X-Real-IP или первый IP из X-Forwarded-For;
+    - иначе используем только peer IP.
+    """
+    peer_ip = getattr(request, "remote", None)
+    if _is_valid_yookassa_ip(peer_ip):
+        return peer_ip
+    if not _is_trusted_proxy_ip(peer_ip):
+        return peer_ip
+
+    x_real_ip = request.headers.get("X-Real-IP")
+    if x_real_ip:
+        return x_real_ip.strip()
+
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        first_ip = xff.split(",", 1)[0].strip()
+        if first_ip:
+            return first_ip
+    return peer_ip
 
 
 def _amount_matches(api_value: str | None, txn_amount: Decimal) -> bool:
@@ -125,8 +172,7 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
     if request.method != "POST":
         return web.Response(status=405)
 
-    # Nginx передает реальный IP клиента в заголовке X-Real-IP
-    client_ip = request.headers.get("X-Real-IP") or getattr(request, "remote", None)
+    client_ip = _extract_effective_client_ip(request)
     if not _is_valid_yookassa_ip(client_ip):
         settings = get_settings()
         if "ngrok" not in (settings.WEBHOOK_HOST or ""):
