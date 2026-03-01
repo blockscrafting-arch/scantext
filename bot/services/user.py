@@ -48,10 +48,11 @@ async def get_or_create_user(
     return user
 
 
-async def spend_user_limit(session: AsyncSession, user: User) -> bool:
+async def spend_user_limit(session: AsyncSession, user: User, amount: int = 1) -> tuple[bool, int, int]:
     """
-    Списывает один лимит: сначала бесплатный, затем купленный.
-    Использует блокировку строки (FOR UPDATE). Не используем lazy load — перезагружаем user с balance одним запросом.
+    Списывает заданное количество лимитов: сначала бесплатные, затем купленные.
+    Использует блокировку строки (FOR UPDATE).
+    Возвращает: (success, deducted_free, deducted_paid)
     """
     result = await session.execute(
         select(User)
@@ -60,19 +61,33 @@ async def spend_user_limit(session: AsyncSession, user: User) -> bool:
         .with_for_update()
     )
     u = result.scalar_one()
-    if u.free_limits_remaining > 0:
-        u.free_limits_remaining -= 1
-        return True
-    if u.balance and u.balance.purchased_credits > 0:
-        u.balance.purchased_credits -= 1
-        return True
-    return False
+    
+    total_available = u.free_limits_remaining + (u.balance.purchased_credits if u.balance else 0)
+    if total_available < amount:
+        return False, 0, 0
+        
+    deducted_free = 0
+    deducted_paid = 0
+    
+    if u.free_limits_remaining >= amount:
+        u.free_limits_remaining -= amount
+        deducted_free = amount
+    else:
+        deducted_free = u.free_limits_remaining
+        u.free_limits_remaining = 0
+        deducted_paid = amount - deducted_free
+        if u.balance:
+            u.balance.purchased_credits -= deducted_paid
+            
+    return True, deducted_free, deducted_paid
 
 
-async def refund_user_limit(session: AsyncSession, user: User) -> None:
-    """Возвращает один лимит (при отмене/ошибке после списания). Начисляем в бесплатные."""
+async def refund_user_limit(session: AsyncSession, user: User, deducted_free: int = 1, deducted_paid: int = 0) -> None:
+    """Возвращает списанные лимиты в соответствующие счетчики."""
     result = await session.execute(
-        select(User).where(User.id == user.id).with_for_update()
+        select(User).where(User.id == user.id).options(selectinload(User.balance)).with_for_update()
     )
     u = result.scalar_one()
-    u.free_limits_remaining += 1
+    u.free_limits_remaining += deducted_free
+    if u.balance and deducted_paid > 0:
+        u.balance.purchased_credits += deducted_paid

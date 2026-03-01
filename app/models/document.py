@@ -30,6 +30,9 @@ class Document(Base):
     # Статус: pending, processing, done, error
     status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False, index=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    deducted_free: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    deducted_paid: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
     # Результат (mime типа результата; раньше был result_s3_key — колонка оставлена для совместимости БД)
     result_s3_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)

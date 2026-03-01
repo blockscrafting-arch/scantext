@@ -49,18 +49,19 @@ class ThrottlingMiddleware(BaseMiddleware):
 
         key = f"throttle:{user_id}"
         try:
-            # Инкрементируем счетчик и задаем время жизни (expire)
-            async with self.redis.pipeline(transaction=True) as pipe:
-                pipe.incr(key)
-                pipe.expire(key, int(self.rate_limit) + 1)
-                result = await pipe.execute()
-            count = result[0]
+            # Инкрементируем счетчик
+            count = await self.redis.incr(key)
+            if count == 1:
+                # Устанавливаем expire только при первом запросе окна (Fixed Window)
+                await self.redis.expire(key, int(self.rate_limit) + 1)
         except Exception as e:
             logger.warning("Throttling Redis error, passing update through: %s", e)
             return await handler(event, data)
 
         if count > self.max_requests:
-            await event.answer("Слишком много запросов. Пожалуйста, подождите.")
+            # Предупреждаем только один раз за окно, чтобы не спамить в ответ на спам
+            if count == self.max_requests + 1:
+                await event.answer("Слишком много запросов. Пожалуйста, подождите пару секунд.")
             return
 
         return await handler(event, data)

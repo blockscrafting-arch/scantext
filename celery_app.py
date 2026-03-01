@@ -146,7 +146,7 @@ def _download_telegram_file(file_id: str) -> bytes:
     file_size = file_info.get("file_size")
 
     if file_size is not None and file_size > MAX_FILE_SIZE_BYTES:
-        raise ValueError(f"File size ({file_size} bytes) exceeds the allowed limit of {MAX_FILE_SIZE_BYTES} bytes.")
+        raise ValueError(f"FILE_TOO_LARGE: Файл слишком большой. Максимальный размер - {MAX_FILE_SIZE_BYTES // (1024*1024)} МБ.")
 
     path = file_info["file_path"]
     if file_size is None:
@@ -158,9 +158,9 @@ def _download_telegram_file(file_id: str) -> bytes:
             for chunk in resp.iter_bytes():
                 total += len(chunk)
                 if total > MAX_FILE_SIZE_BYTES:
-                    raise ValueError(f"File size exceeds the allowed limit of {MAX_FILE_SIZE_BYTES} bytes.")
+                    raise ValueError(f"FILE_TOO_LARGE: Файл слишком большой. Максимальный размер - {MAX_FILE_SIZE_BYTES // (1024*1024)} МБ.")
                 chunks.append(chunk)
-        return b"".join(chunks)
+            return b"".join(chunks)
 
     r2 = http_client.get(f"https://api.telegram.org/file/bot{token}/{path}")
     r2.raise_for_status()
@@ -339,20 +339,38 @@ def _process_pdf_hybrid(pdf_bytes: bytes, pypdf_texts: list[str]) -> str:
         )
 
     import tempfile
-    page_results: list[str] = []
+    import concurrent.futures
+
+    page_results: list[str] = [""] * len(pypdf_texts)
     pypdf_used = 0
     llm_used = 0
+    
+    tasks = []
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        for page_num, pypdf_text in enumerate(pypdf_texts, 1):
+        for i, pypdf_text in enumerate(pypdf_texts):
+            page_num = i + 1
             if _page_text_sufficient(pypdf_text, min_chars):
-                page_results.append(pypdf_text)
+                page_results[i] = pypdf_text
                 pypdf_used += 1
             else:
-                page_results.append(
-                    _run_llm_for_pdf_page(pdf_bytes, page_num, temp_dir)
-                )
+                tasks.append((i, page_num))
                 llm_used += 1
+
+        if tasks:
+            max_workers = min(10, len(tasks))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_index = {
+                    executor.submit(_run_llm_for_pdf_page, pdf_bytes, page_num, temp_dir): idx
+                    for idx, page_num in tasks
+                }
+                for future in concurrent.futures.as_completed(future_to_index):
+                    idx = future_to_index[future]
+                    try:
+                        page_results[idx] = future.result()
+                    except Exception as e:
+                        logger.exception("Error processing page %s in ThreadPoolExecutor: %s", idx + 1, e)
+                        page_results[idx] = f"[Страница {idx + 1}: непредвиденная ошибка — {e}]"
 
     logger.info("PDF hybrid: %s pypdf, %s LLM", pypdf_used, llm_used)
     return "\n\n---\n\n".join(page_results)
@@ -404,7 +422,6 @@ def process_document_task(self, document_id: int, file_id: str) -> None:
     Скачивает файл из Telegram, запускает OCR/PDF, отправляет результат в чат:
     текстом (если ≤4096 символов) или одним .txt файлом.
     """
-    total_deducted_limits = 1
     session = SyncSession()
     try:
         doc = session.execute(select(Document).where(Document.id == document_id).options(selectinload(Document.user))).scalar_one_or_none()
@@ -449,26 +466,39 @@ def process_document_task(self, document_id: int, file_id: str) -> None:
                     total_available += user_record.balance.purchased_credits
 
                 if total_available < additional_limits_needed:
-                    user_record.free_limits_remaining += 1
+                    user_record.free_limits_remaining += doc.deducted_free
+                    if user_record.balance:
+                        user_record.balance.purchased_credits += doc.deducted_paid
+                    
                     doc.status = "error"
                     doc.error_message = "Not enough limits for PDF pages requiring AI"
-                    session.commit()
+                    
                     _send_telegram_message(
                         doc.user.tg_id,
                         f"Для распознавания части страниц нужен ИИ. Требуется {llm_page_count} лимитов, у вас осталось {total_available + 1}. Пополните баланс или отправьте файл меньшего размера.",
                     )
+                    
+                    doc.deducted_free = 0
+                    doc.deducted_paid = 0
+                    session.commit()
                     return  # лимит уже возвращён, выходим
 
                 remaining_to_deduct = additional_limits_needed
+                new_ded_free = 0
+                new_ded_paid = 0
+                
                 if user_record.free_limits_remaining >= remaining_to_deduct:
                     user_record.free_limits_remaining -= remaining_to_deduct
-                    remaining_to_deduct = 0
+                    new_ded_free = remaining_to_deduct
                 else:
-                    remaining_to_deduct -= user_record.free_limits_remaining
+                    new_ded_free = user_record.free_limits_remaining
                     user_record.free_limits_remaining = 0
-                if remaining_to_deduct > 0 and user_record.balance:
-                    user_record.balance.purchased_credits -= remaining_to_deduct
-                total_deducted_limits = llm_page_count
+                    new_ded_paid = remaining_to_deduct - new_ded_free
+                    if user_record.balance:
+                        user_record.balance.purchased_credits -= new_ded_paid
+                
+                doc.deducted_free += new_ded_free
+                doc.deducted_paid += new_ded_paid
                 session.commit()
 
         result_bytes, result_mime = _process_document_bytes(
@@ -503,22 +533,38 @@ def process_document_task(self, document_id: int, file_id: str) -> None:
         if doc:
             doc.status = "error"
             doc.error_message = _sanitize_error_message(str(e))
+            
+            is_file_too_large = "FILE_TOO_LARGE:" in str(e)
+            
             is_llm_or_config_error = (
                 "openrouter" in str(e).lower()
                 or "api_key" in str(e).lower()
                 or "rate" in str(e).lower()
                 or "429" in str(e)
             )
-            if is_llm_or_config_error:
-                session.execute(
-                    update(User).where(User.id == doc.user_id).values(
-                        free_limits_remaining=User.free_limits_remaining + total_deducted_limits
-                    )
-                )
+            
+            if is_llm_or_config_error or is_file_too_large:
+                # Refund exactly what was deducted
+                user_record = session.execute(
+                    select(User).where(User.id == doc.user_id).options(selectinload(User.balance)).with_for_update()
+                ).scalar_one_or_none()
+                if user_record:
+                    user_record.free_limits_remaining += doc.deducted_free
+                    if user_record.balance:
+                        user_record.balance.purchased_credits += doc.deducted_paid
+                    doc.deducted_free = 0
+                    doc.deducted_paid = 0
             session.commit()
             try:
                 if doc.user:
-                    if is_llm_or_config_error:
+                    if is_file_too_large:
+                        # Уведомляем пользователя о превышении размера файла
+                        error_text = str(e).split("FILE_TOO_LARGE:")[-1].strip()
+                        _send_telegram_message(
+                            doc.user.tg_id,
+                            f"❌ Ошибка: {error_text} Пожалуйста, уменьшите размер файла и попробуйте снова. Списанный лимит возвращён.",
+                        )
+                    elif is_llm_or_config_error:
                         _send_telegram_message(
                             doc.user.tg_id,
                             "Сервис распознавания временно недоступен. Обратитесь к администратору. Ваш лимит возвращён.",
@@ -530,7 +576,7 @@ def process_document_task(self, document_id: int, file_id: str) -> None:
                         )
             except Exception:
                 pass
-            if is_llm_or_config_error:
+            if is_llm_or_config_error or is_file_too_large:
                 return
         # Экспоненциальный backoff при rate limit / временных ошибках API
         countdown = min(2 ** self.request.retries, 60) if self.request.retries < self.max_retries else 60
@@ -648,10 +694,14 @@ def cleanup_stale_documents_task() -> None:
             tg_id = doc.user.tg_id if doc.user else None
             try:
                 user_row = session.execute(
-                    select(User).where(User.id == doc.user_id).with_for_update()
+                    select(User).where(User.id == doc.user_id).options(selectinload(User.balance)).with_for_update()
                 ).scalar_one_or_none()
                 if user_row:
-                    user_row.free_limits_remaining += 1
+                    user_row.free_limits_remaining += doc.deducted_free
+                    if user_row.balance:
+                        user_row.balance.purchased_credits += doc.deducted_paid
+                    doc.deducted_free = 0
+                    doc.deducted_paid = 0
                 doc.status = "error"
                 doc.error_message = "Превышено время обработки. Лимит возвращён."
                 session.commit()
@@ -659,7 +709,7 @@ def cleanup_stale_documents_task() -> None:
                     try:
                         _send_telegram_message(
                             tg_id,
-                            "Обработка файла не была завершена вовремя. Один лимит возвращён на ваш счёт. Попробуйте отправить файл снова.",
+                            "Обработка файла не была завершена вовремя. Списанные лимиты возвращены на ваш счёт. Попробуйте отправить файл снова.",
                             parse_mode=None,
                         )
                     except Exception as e:

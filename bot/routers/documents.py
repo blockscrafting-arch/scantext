@@ -44,7 +44,7 @@ async def on_document(message: Message, session) -> None:
             first_name=user_tg.first_name,
             last_name=user_tg.last_name,
         )
-        ok = await spend_user_limit(session, user)
+        ok, ded_free, ded_paid = await spend_user_limit(session, user, amount=1)
         if not ok:
             await message.answer("Лимит исчерпан. Используйте /buy для покупки.")
             return
@@ -52,6 +52,7 @@ async def on_document(message: Message, session) -> None:
         file_id, file_name, mime_type = _get_file_id_and_name(message)
         if not file_id:
             await message.answer("Не удалось получить файл. Отправьте фото или PDF ещё раз.")
+            await refund_user_limit(session, user, ded_free, ded_paid)
             return
         file_unique_id = None
         if message.document:
@@ -66,6 +67,8 @@ async def on_document(message: Message, session) -> None:
             file_name=file_name,
             mime_type=mime_type,
             status="pending",
+            deducted_free=ded_free,
+            deducted_paid=ded_paid,
         )
         session.add(doc)
         await session.flush()
@@ -78,7 +81,7 @@ async def on_document(message: Message, session) -> None:
             await session.commit()
         except Exception as e:
             logger.exception("Failed to enqueue document %s: %s", doc.id, e)
-            await refund_user_limit(session, user)
+            await refund_user_limit(session, user, ded_free, ded_paid)
             await message.answer(
                 "Сервис обработки временно недоступен. Ваш лимит не списан — попробуйте отправить файл через минуту."
             )
@@ -88,6 +91,11 @@ async def on_document(message: Message, session) -> None:
             "Файл принят. Распознавание текста (AI) займёт до минуты, для PDF — дольше. "
             "Результат придёт сюда отдельным сообщением. Если расшифровка не пришла за 2–3 минуты — напишите в поддержку."
         )
+        try:
+            from aiogram.enums import ChatAction
+            await message.bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
+        except Exception:
+            pass
     except Exception as e:
         logger.exception("Error processing document from user %s: %s", user_tg.id, e)
         await message.answer(
