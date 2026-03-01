@@ -15,8 +15,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.models import Document, Transaction, User, UserBalance
-from app.services.export import build_summary_xlsx, build_transactions_xlsx, build_users_xlsx
+from app.services.export import build_summary_xlsx, build_transactions_xlsx, build_users_xlsx, build_utm_xlsx
 from app.services.settings import get_setting, set_setting
+from app.services.utm_stats import get_first_touch_aggregates, get_utm_totals
 from bot.filters import IsAdminFilter, invalidate_admin_cache, is_superadmin
 from config import get_settings as get_cfg
 from bot.keyboards.admin import (
@@ -27,11 +28,13 @@ from bot.keyboards.admin import (
     ADMIN_CANCEL,
     ADMIN_EXPORT_SUMMARY,
     ADMIN_EXPORT_TXN,
+    ADMIN_EXPORT_UTM,
     ADMIN_EXPORT_USERS,
     ADMIN_MAIN,
     ADMIN_SETTINGS,
     ADMIN_SETTING_EDIT_PREFIX,
     ADMIN_STATS,
+    ADMIN_STATS_UTM,
     ADMIN_USERS,
     ADMIN_USER_BAN,
     ADMIN_USER_PROMOTE,
@@ -47,6 +50,7 @@ from bot.keyboards.admin import (
     admin_main_menu,
     admin_settings_keyboard,
     admin_stats_menu,
+    admin_utm_menu,
     admin_user_profile_keyboard,
 )
 from bot.states.admin import AdminStates
@@ -208,6 +212,48 @@ async def admin_export_summary(callback: CallbackQuery, session) -> None:
             )
     except Exception as e:
         logger.exception("export summary failed: %s", e)
+        if isinstance(callback.message, Message):
+            await callback.message.answer("Не удалось сформировать выгрузку. Попробуйте позже.")
+
+
+@router.callback_query(F.data == ADMIN_STATS_UTM, IsAdminFilter())
+async def admin_cb_stats_utm(callback: CallbackQuery, session) -> None:
+    """Раздел UTM: first-touch сводка и кнопка выгрузки."""
+    totals = await get_utm_totals(session)
+    aggregates = await get_first_touch_aggregates(session)
+    lines = [
+        "📈 UTM (first-touch)\n",
+        f"Всего переходов с метками: {totals['total_utm_events']}",
+        f"Пользователей с UTM: {totals['total_users_with_utm']}\n",
+    ]
+    if aggregates:
+        lines.append("Топ по источнику/каналу/кампании:")
+        for row in aggregates[:15]:
+            s = row["utm_source"] or "—"
+            m = row["utm_medium"] or "—"
+            c = row["utm_campaign"] or "—"
+            lines.append(f"  {s} | {m} | {c}: {row['user_count']} чел.")
+    else:
+        lines.append("Нет данных.")
+    text = "\n".join(lines)
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(text, reply_markup=admin_utm_menu())
+    await callback.answer()
+
+
+@router.callback_query(F.data == ADMIN_EXPORT_UTM, IsAdminFilter())
+async def admin_export_utm(callback: CallbackQuery, session) -> None:
+    """Выгрузка UTM в Excel."""
+    await callback.answer("Подготовка выгрузки…")
+    try:
+        file_bytes = await build_utm_xlsx(session)
+        if isinstance(callback.message, Message):
+            await callback.message.answer_document(
+                BufferedInputFile(file_bytes, filename="utm.xlsx"),
+                caption="Выгрузка UTM",
+            )
+    except Exception as e:
+        logger.exception("export utm failed: %s", e)
         if isinstance(callback.message, Message):
             await callback.message.answer("Не удалось сформировать выгрузку. Попробуйте позже.")
 

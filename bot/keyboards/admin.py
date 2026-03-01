@@ -14,6 +14,8 @@ ADMIN_SETTINGS = "adm:set"
 ADMIN_EXPORT_USERS = "adm:ex:u"
 ADMIN_EXPORT_TXN = "adm:ex:t"
 ADMIN_EXPORT_SUMMARY = "adm:ex:s"
+ADMIN_STATS_UTM = "adm:utm"
+ADMIN_EXPORT_UTM = "adm:ex:utm"
 ADMIN_BACK = "adm:back"
 ADMIN_CANCEL = "adm:cancel"
 # Пользователь: лимиты и бан (user_id в данных)
@@ -57,12 +59,21 @@ def admin_back_to_main() -> InlineKeyboardMarkup:
 
 
 def admin_stats_menu() -> InlineKeyboardMarkup:
-    """Меню раздела Статистика: выгрузки + Назад."""
+    """Меню раздела Статистика: выгрузки + UTM + Назад."""
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📈 UTM-метки", callback_data=ADMIN_STATS_UTM)],
         [InlineKeyboardButton(text="📥 Пользователи (Excel)", callback_data=ADMIN_EXPORT_USERS)],
         [InlineKeyboardButton(text="📥 Транзакции (Excel)", callback_data=ADMIN_EXPORT_TXN)],
         [InlineKeyboardButton(text="📥 Сводка (Excel)", callback_data=ADMIN_EXPORT_SUMMARY)],
         [InlineKeyboardButton(text="🔙 Назад", callback_data=ADMIN_MAIN)],
+    ])
+
+
+def admin_utm_menu() -> InlineKeyboardMarkup:
+    """Меню раздела UTM: выгрузка Excel + Назад в Статистику."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📥 UTM (Excel)", callback_data=ADMIN_EXPORT_UTM)],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=ADMIN_STATS)],
     ])
 
 

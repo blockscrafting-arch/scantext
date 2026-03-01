@@ -8,7 +8,7 @@ from openpyxl import Workbook
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Document, Transaction, User
+from app.models import Document, Transaction, User, UserUTM
 
 
 async def build_users_xlsx(session: AsyncSession) -> bytes:
@@ -86,6 +86,59 @@ async def build_summary_xlsx(session: AsyncSession) -> bytes:
     ws.append(["Всего пользователей", total_users])
     ws.append(["Обработано документов", total_docs])
     ws.append(["Выручка (успешные платежи), ₽", float(total_paid)])
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+async def build_utm_xlsx(session: AsyncSession) -> bytes:
+    """Выгрузка UTM: лист first_touch_summary (агрегаты) и raw_events (все записи)."""
+    from app.services.utm_stats import get_first_touch_aggregates, get_utm_totals
+
+    totals = await get_utm_totals(session)
+    aggregates = await get_first_touch_aggregates(session)
+    result = await session.execute(
+        select(UserUTM, User.tg_id)
+        .join(User, UserUTM.user_id == User.id)
+        .order_by(UserUTM.created_at.desc())
+    )
+    raw_rows = result.all()
+
+    wb = Workbook()
+    ws_summary = wb.active
+    ws_summary.title = "first_touch_summary"
+    ws_summary.append(["utm_source", "utm_medium", "utm_campaign", "user_count"])
+    for row in aggregates:
+        ws_summary.append([
+            row["utm_source"],
+            row["utm_medium"],
+            row["utm_campaign"],
+            row["user_count"],
+        ])
+    ws_summary.append([])
+    ws_summary.append(["Всего переходов с UTM", totals["total_utm_events"]])
+    ws_summary.append(["Пользователей с UTM (first-touch)", totals["total_users_with_utm"]])
+
+    ws_raw = wb.create_sheet("raw_events")
+    ws_raw.append([
+        "id", "user_id", "tg_id", "utm_source", "utm_medium", "utm_campaign",
+        "utm_term", "utm_content", "raw_start_payload", "created_at",
+    ])
+    for utm, tg_id in raw_rows:
+        ws_raw.append([
+            utm.id,
+            utm.user_id,
+            tg_id,
+            utm.utm_source or "",
+            utm.utm_medium or "",
+            utm.utm_campaign or "",
+            utm.utm_term or "",
+            utm.utm_content or "",
+            utm.raw_start_payload or "",
+            utm.created_at.strftime("%Y-%m-%d %H:%M") if utm.created_at else "",
+        ])
+
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)

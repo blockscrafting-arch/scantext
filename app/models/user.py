@@ -73,6 +73,8 @@ class UserUTM(Base):
     utm_source: Mapped[str | None] = mapped_column(String(255), nullable=True)
     utm_medium: Mapped[str | None] = mapped_column(String(255), nullable=True)
     utm_campaign: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    utm_term: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    utm_content: Mapped[str | None] = mapped_column(String(255), nullable=True)
     raw_start_payload: Mapped[str | None] = mapped_column(Text, nullable=True)  # полная строка после /start
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

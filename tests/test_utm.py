@@ -23,3 +23,15 @@ def test_parse_utm_from_payload():
     assert out["utm_source"] == ["ads"]  # parse_qs returns lists
     out2 = _parse_utm_from_payload("single_ref")
     assert "raw" in out2
+
+
+def test_parse_utm_from_payload_term_content():
+    """Парсинг utm_term и utm_content."""
+    out = _parse_utm_from_payload(
+        "utm_source=s&utm_medium=m&utm_campaign=c&utm_term=keyword&utm_content=block"
+    )
+    assert out.get("utm_source") == ["s"]
+    assert out.get("utm_medium") == ["m"]
+    assert out.get("utm_campaign") == ["c"]
+    assert out.get("utm_term") == ["keyword"]
+    assert out.get("utm_content") == ["block"]

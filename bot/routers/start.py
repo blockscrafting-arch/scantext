@@ -56,14 +56,18 @@ async def cmd_start(message: Message, session) -> None:
     payload = _parse_start_payload(message.text or "")
     if payload:
         utm = _parse_utm_from_payload(payload)
+
         def _first(v):
             return v[0] if isinstance(v, list) and v else None
+
         utm_record = UserUTM(
             user_id=user.id,
             raw_start_payload=payload,
             utm_source=_first(utm.get("utm_source")),
             utm_medium=_first(utm.get("utm_medium")),
             utm_campaign=_first(utm.get("utm_campaign")),
+            utm_term=_first(utm.get("utm_term")),
+            utm_content=_first(utm.get("utm_content")),
         )
         session.add(utm_record)
 
