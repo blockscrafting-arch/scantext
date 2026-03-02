@@ -31,6 +31,11 @@ ADMIN_USER_PREFIX = "adm:u:"
 ADMIN_SETTING_EDIT_PREFIX = "adm:set:"
 ADMIN_BROADCAST_CONFIRM = "adm:bc:yes"
 ADMIN_BROADCAST_ABORT = "adm:bc:no"
+# Тарифные пакеты
+ADMIN_PACKAGES = "adm:pkg"
+ADMIN_PACKAGE_ADD = "adm:pkg:add"
+ADMIN_PACKAGE_PREFIX = "adm:pkg:"   # adm:pkg:ID — открыть пакет ID
+ADMIN_PACKAGE_EDIT_PREFIX = "adm:pkg:e:"  # adm:pkg:e:ID:field (name,pages,price,order,toggle)
 
 
 def admin_broadcast_confirm_keyboard() -> InlineKeyboardMarkup:
@@ -42,11 +47,12 @@ def admin_broadcast_confirm_keyboard() -> InlineKeyboardMarkup:
 
 
 def admin_main_menu() -> InlineKeyboardMarkup:
-    """Главное меню админки: Статистика, Пользователи, Рассылка, Настройки."""
+    """Главное меню админки: Статистика, Пользователи, Рассылка, Тарифы, Настройки."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📊 Статистика", callback_data=ADMIN_STATS)],
         [InlineKeyboardButton(text="👥 Пользователи", callback_data=ADMIN_USERS)],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data=ADMIN_BROADCAST)],
+        [InlineKeyboardButton(text="📦 Тарифы", callback_data=ADMIN_PACKAGES)],
         [InlineKeyboardButton(text="⚙️ Настройки", callback_data=ADMIN_SETTINGS)],
     ])
 
@@ -120,3 +126,36 @@ def admin_settings_keyboard(keys_with_values: list[tuple[str, str, str]]) -> Inl
     ]
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=ADMIN_MAIN)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_packages_list_keyboard(
+    packages: list["PaymentPackageData"],
+) -> InlineKeyboardMarkup:
+    """Список пакетов: кнопка на каждый пакет (adm:pkg:ID) + Добавить + Назад."""
+    from app.services.settings import PaymentPackageData
+    rows = []
+    for p in packages:
+        if isinstance(p, PaymentPackageData):
+            status = "✓" if p.is_active else "✗"
+            rows.append([
+                InlineKeyboardButton(
+                    text=f"{p.name} — {p.pages} стр — {p.price} ₽ [{status}]",
+                    callback_data=f"{ADMIN_PACKAGE_PREFIX}{p.id}",
+                )
+            ])
+    rows.append([InlineKeyboardButton(text="➕ Добавить пакет", callback_data=ADMIN_PACKAGE_ADD)])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=ADMIN_MAIN)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_package_edit_keyboard(package_id: int, is_active: bool) -> InlineKeyboardMarkup:
+    """Меню редактирования одного пакета: название, страницы, цена, порядок, вкл/выкл."""
+    toggle_text = "🔴 Выключить" if is_active else "🟢 Включить"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ Название", callback_data=f"{ADMIN_PACKAGE_EDIT_PREFIX}{package_id}:name")],
+        [InlineKeyboardButton(text="📄 Страницы", callback_data=f"{ADMIN_PACKAGE_EDIT_PREFIX}{package_id}:pages")],
+        [InlineKeyboardButton(text="💰 Цена", callback_data=f"{ADMIN_PACKAGE_EDIT_PREFIX}{package_id}:price")],
+        [InlineKeyboardButton(text="🔢 Порядок", callback_data=f"{ADMIN_PACKAGE_EDIT_PREFIX}{package_id}:order")],
+        [InlineKeyboardButton(text=toggle_text, callback_data=f"{ADMIN_PACKAGE_EDIT_PREFIX}{package_id}:toggle")],
+        [InlineKeyboardButton(text="🔙 К списку тарифов", callback_data=ADMIN_PACKAGES)],
+    ])

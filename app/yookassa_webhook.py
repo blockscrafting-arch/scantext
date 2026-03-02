@@ -312,8 +312,8 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
                 try:
                     await bot.send_message(
                         chat_id=user_tg_id,
-                        text="К сожалению, платеж был отменен или не прошел. "
-                             "Попробуйте еще раз с помощью команды /buy."
+                        text="К сожалению, платёж был отменён или не прошёл. "
+                             "Попробуйте снова: /buy — выберите тариф и оплатите."
                     )
                 except Exception as e:
                     logger.warning("Failed to send cancellation message: %s", e)
@@ -391,8 +391,16 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
             await session.flush()
             await session.refresh(user, attribute_names=["balance"])
 
-        pack_size = await get_pack_size(session)
-        user.balance.purchased_credits += pack_size
+        # Начисление по снимку пакета в транзакции. Legacy: старые pending без snapshot.
+        # После 24–48 ч с деплоя можно убрать fallback на get_pack_size и удалить legacy-настройки.
+        credits = txn.package_pages if txn.package_pages is not None else None
+        if credits is None:
+            credits = await get_pack_size(session)
+            logger.warning(
+                "Legacy transaction without package snapshot, payment_id=%s txn_id=%s, using get_pack_size=%s",
+                payment_id, txn.id, credits,
+            )
+        user.balance.purchased_credits += credits
         await session.commit()
         _log_webhook_outcome(
             WEBHOOK_OUTCOME_ACCEPTED,
@@ -404,14 +412,15 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
             api_status=api_status,
             amount_match=True,
         )
-        logger.info("Payment %s succeeded, user_id=%s credits+=%s", payment_id, user_id, pack_size)
+        logger.info("Payment %s succeeded, user_id=%s credits+=%s", payment_id, user_id, credits)
 
+        package_name = txn.package_name or "Пакет"
         if bot and user_tg_id:
             try:
                 await bot.send_message(
                     chat_id=user_tg_id,
                     text=f"✅ Оплата прошла успешно!\n"
-                         f"Вам начислено {pack_size} страниц.\n"
+                         f"Пакет «{package_name}»: начислено {credits} страниц.\n"
                          f"Ваш текущий баланс купленных: {user.balance.purchased_credits} стр."
                 )
             except Exception as e:

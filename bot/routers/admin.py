@@ -14,9 +14,15 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.models import Document, Transaction, User, UserBalance
+from app.models import Document, PaymentPackage, Transaction, User, UserBalance
 from app.services.export import build_summary_xlsx, build_transactions_xlsx, build_users_xlsx, build_utm_xlsx
-from app.services.settings import get_setting, set_setting
+from app.services.settings import (
+    get_all_packages,
+    get_package_by_id,
+    get_setting,
+    invalidate_packages_cache,
+    set_setting,
+)
 from app.services.utm_stats import get_first_touch_aggregates, get_utm_totals
 from bot.filters import IsAdminFilter, invalidate_admin_cache, is_superadmin
 from config import get_settings as get_cfg
@@ -31,6 +37,10 @@ from bot.keyboards.admin import (
     ADMIN_EXPORT_UTM,
     ADMIN_EXPORT_USERS,
     ADMIN_MAIN,
+    ADMIN_PACKAGES,
+    ADMIN_PACKAGE_ADD,
+    ADMIN_PACKAGE_EDIT_PREFIX,
+    ADMIN_PACKAGE_PREFIX,
     ADMIN_SETTINGS,
     ADMIN_SETTING_EDIT_PREFIX,
     ADMIN_STATS,
@@ -48,6 +58,8 @@ from bot.keyboards.admin import (
     admin_broadcast_confirm_keyboard,
     admin_cancel_keyboard,
     admin_main_menu,
+    admin_package_edit_keyboard,
+    admin_packages_list_keyboard,
     admin_settings_keyboard,
     admin_stats_menu,
     admin_utm_menu,
@@ -420,6 +432,257 @@ async def admin_setting_value_message(message: Message, session, state: FSMConte
     await state.clear()
 
     await message.answer(f"Сохранено: {html_escape(key)} = {html_escape(val)}", reply_markup=admin_back_to_main())
+
+
+# —— Тарифные пакеты ——
+
+@router.callback_query(F.data == ADMIN_PACKAGES, IsAdminFilter())
+async def admin_cb_packages(callback: CallbackQuery, session, state: FSMContext) -> None:
+    """Раздел «Тарифы»: список пакетов."""
+    await state.clear()
+    packages = await get_all_packages(session)
+    text = "📦 Тарифные пакеты. Выберите пакет для редактирования или добавьте новый:"
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(text, reply_markup=admin_packages_list_keyboard(packages))
+    await callback.answer()
+
+
+@router.callback_query(F.data == ADMIN_PACKAGE_ADD, IsAdminFilter())
+async def admin_cb_package_add(callback: CallbackQuery, state: FSMContext) -> None:
+    """Начать добавление пакета: запрос кода."""
+    await state.set_state(AdminStates.waiting_package_code)
+    await state.update_data(admin_package_create=True)
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            "Введите <b>код</b> нового пакета (латиница, например demo2):",
+            reply_markup=admin_cancel_keyboard(),
+        )
+    await callback.answer()
+
+
+def _parse_package_id(data: str) -> int | None:
+    """Из adm:pkg:ID извлекает ID."""
+    if not data or not data.startswith(ADMIN_PACKAGE_PREFIX):
+        return None
+    suffix = data[len(ADMIN_PACKAGE_PREFIX):].strip()
+    if not suffix.isdigit():
+        return None
+    return int(suffix)
+
+
+@router.callback_query(F.data.regexp(r"^adm:pkg:\d+$"), IsAdminFilter())
+async def admin_cb_package_open(callback: CallbackQuery, session) -> None:
+    """Открыть меню редактирования пакета."""
+    pkg_id = _parse_package_id(callback.data or "")
+    if pkg_id is None:
+        await callback.answer("Ошибка.")
+        return
+    pkg_data = await get_package_by_id(session, pkg_id)
+    if not pkg_data:
+        await callback.answer("Пакет не найден.")
+        return
+    text = (
+        f"📦 <b>{html_escape(pkg_data.name)}</b> ({pkg_data.code})\n"
+        f"Страниц: {pkg_data.pages}, цена: {pkg_data.price} ₽\n"
+        f"Порядок: {pkg_data.sort_order}, активен: {'да' if pkg_data.is_active else 'нет'}"
+    )
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(text, reply_markup=admin_package_edit_keyboard(pkg_id, pkg_data.is_active))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith(ADMIN_PACKAGE_EDIT_PREFIX), IsAdminFilter())
+async def admin_cb_package_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
+    """Запрос нового значения поля пакета. data = adm:pkg:e:ID:field."""
+    parts = (callback.data or "").split(":")
+    if len(parts) < 5:
+        await callback.answer("Ошибка.")
+        return
+    try:
+        pkg_id = int(parts[3])
+    except ValueError:
+        await callback.answer("Ошибка.")
+        return
+    field = parts[4].lower()
+    if field not in ("name", "pages", "price", "order", "toggle"):
+        await callback.answer("Неизвестное поле.")
+        return
+    if field == "toggle":
+        from app.db import async_session_factory
+        async with async_session_factory() as session:
+            result = await session.get(PaymentPackage, pkg_id)
+            if not result:
+                await callback.answer("Пакет не найден.")
+                return
+            active_count = await session.scalar(
+                select(func.count(PaymentPackage.id)).where(PaymentPackage.is_active.is_(True))
+            )
+            if result.is_active and (active_count or 0) <= 1:
+                await callback.answer("Нельзя отключить последний активный пакет.", show_alert=True)
+            else:
+                result.is_active = not result.is_active
+                await session.commit()
+                invalidate_packages_cache()
+                await callback.answer("Пакет обновлён.")
+                pkg_data = await get_package_by_id(session, pkg_id)
+                if pkg_data and isinstance(callback.message, Message):
+                    text = (
+                        f"📦 <b>{html_escape(pkg_data.name)}</b> ({pkg_data.code})\n"
+                        f"Страниц: {pkg_data.pages}, цена: {pkg_data.price} ₽\n"
+                        f"Порядок: {pkg_data.sort_order}, активен: {'да' if pkg_data.is_active else 'нет'}"
+                    )
+                    await callback.message.edit_text(text, reply_markup=admin_package_edit_keyboard(pkg_id, pkg_data.is_active))
+        return
+    await state.set_state(AdminStates.waiting_package_edit_value)
+    await state.update_data(admin_package_id=pkg_id, admin_package_field=field)
+    prompts = {
+        "name": "Введите новое <b>название</b> пакета:",
+        "pages": "Введите новое количество <b>страниц</b> (целое число):",
+        "price": "Введите новую <b>цену</b> (руб, например 225.00):",
+        "order": "Введите <b>порядок</b> (целое число):",
+    }
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(prompts.get(field, "Введите значение:"), reply_markup=admin_cancel_keyboard())
+    await callback.answer()
+
+
+@router.message(AdminStates.waiting_package_edit_value, F.text, IsAdminFilter())
+async def admin_package_edit_value_message(message: Message, session, state: FSMContext) -> None:
+    """Применить новое значение поля пакета."""
+    data = await state.get_data()
+    pkg_id = data.get("admin_package_id")
+    field = data.get("admin_package_field")
+    if pkg_id is None or not field:
+        await state.clear()
+        await message.answer("Время действия истекло.", reply_markup=admin_back_to_main())
+        return
+    pkg = await session.get(PaymentPackage, pkg_id)
+    if not pkg:
+        await state.clear()
+        await message.answer("Пакет не найден.", reply_markup=admin_back_to_main())
+        return
+    raw = (message.text or "").strip()
+    if field == "name":
+        pkg.name = raw or pkg.name
+    elif field == "pages":
+        try:
+            val = int(raw)
+            if val <= 0:
+                await message.answer("Введите положительное число.")
+                return
+            pkg.pages = val
+        except ValueError:
+            await message.answer("Введите целое число.")
+            return
+    elif field == "price":
+        try:
+            val = float(raw.replace(",", "."))
+            if val <= 0:
+                await message.answer("Введите положительное число.")
+                return
+            from decimal import Decimal
+            pkg.price = Decimal(str(round(val, 2)))
+        except ValueError:
+            await message.answer("Введите число (например 225.00).")
+            return
+    elif field == "order":
+        try:
+            pkg.sort_order = int(raw)
+        except ValueError:
+            await message.answer("Введите целое число.")
+            return
+    await session.commit()
+    invalidate_packages_cache()
+    await state.clear()
+    pkg_data = await get_package_by_id(session, pkg_id)
+    if pkg_data:
+        text = (
+            f"Сохранено. 📦 <b>{html_escape(pkg_data.name)}</b> ({pkg_data.code})\n"
+            f"Страниц: {pkg_data.pages}, цена: {pkg_data.price} ₽"
+        )
+    else:
+        text = "Сохранено."
+    await message.answer(text, reply_markup=admin_back_to_main())
+
+
+@router.message(AdminStates.waiting_package_code, F.text, IsAdminFilter())
+async def admin_package_code_message(message: Message, session, state: FSMContext) -> None:
+    raw = (message.text or "").strip().lower()
+    if not raw or not raw.replace("_", "").isalnum():
+        await message.answer("Код должен содержать только латинские буквы, цифры и подчёркивание.")
+        return
+    result = await session.execute(select(PaymentPackage).where(PaymentPackage.code == raw))
+    if result.scalar_one_or_none():
+        await message.answer("Пакет с таким кодом уже есть.")
+        return
+    await state.update_data(admin_package_code=raw)
+    await state.set_state(AdminStates.waiting_package_name)
+    await message.answer("Введите <b>название</b> пакета (например «Демо»):", reply_markup=admin_cancel_keyboard())
+
+
+@router.message(AdminStates.waiting_package_name, F.text, IsAdminFilter())
+async def admin_package_name_message(message: Message, state: FSMContext) -> None:
+    await state.update_data(admin_package_name=(message.text or "").strip() or "Пакет")
+    await state.set_state(AdminStates.waiting_package_pages)
+    await message.answer("Введите количество <b>страниц</b> (целое число):", reply_markup=admin_cancel_keyboard())
+
+
+@router.message(AdminStates.waiting_package_pages, F.text, IsAdminFilter())
+async def admin_package_pages_message(message: Message, state: FSMContext) -> None:
+    try:
+        pages = int((message.text or "").strip())
+        if pages <= 0:
+            raise ValueError("must be positive")
+    except ValueError:
+        await message.answer("Введите целое положительное число.")
+        return
+    await state.update_data(admin_package_pages=pages)
+    await state.set_state(AdminStates.waiting_package_price)
+    await message.answer("Введите <b>цену</b> в рублях (например 225.00):", reply_markup=admin_cancel_keyboard())
+
+
+@router.message(AdminStates.waiting_package_price, F.text, IsAdminFilter())
+async def admin_package_price_message(message: Message, state: FSMContext) -> None:
+    try:
+        price = float((message.text or "").strip().replace(",", "."))
+        if price <= 0:
+            raise ValueError("must be positive")
+    except ValueError:
+        await message.answer("Введите положительное число (например 225.00).")
+        return
+    from decimal import Decimal
+    await state.update_data(admin_package_price=str(round(price, 2)))
+    await state.set_state(AdminStates.waiting_package_sort_order)
+    await message.answer("Введите <b>порядок</b> отображения (целое число):", reply_markup=admin_cancel_keyboard())
+
+
+@router.message(AdminStates.waiting_package_sort_order, F.text, IsAdminFilter())
+async def admin_package_sort_order_message(message: Message, session, state: FSMContext) -> None:
+    try:
+        order = int((message.text or "").strip())
+    except ValueError:
+        await message.answer("Введите целое число.")
+        return
+    data = await state.get_data()
+    code = data.get("admin_package_code", "pkg")
+    name = data.get("admin_package_name", "Пакет")
+    pages = data.get("admin_package_pages", 10)
+    price_str = data.get("admin_package_price", "100.00")
+    from decimal import Decimal
+    pkg = PaymentPackage(
+        code=code,
+        name=name,
+        pages=pages,
+        price=Decimal(price_str),
+        currency="RUB",
+        is_active=True,
+        sort_order=order,
+    )
+    session.add(pkg)
+    await session.commit()
+    invalidate_packages_cache()
+    await state.clear()
+    await message.answer(f"Пакет «{name}» добавлен.", reply_markup=admin_back_to_main())
 
 
 # —— FSM: поиск пользователя ——

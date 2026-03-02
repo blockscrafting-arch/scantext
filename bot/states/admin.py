@@ -14,3 +14,10 @@ class AdminStates(StatesGroup):
     waiting_limit_paid = State()      # Количество для платных лимитов
     waiting_setting_value = State()   # Значение настройки (key в data)
     waiting_broadcast = State()       # Ожидание сообщения для рассылки
+    # Тарифные пакеты
+    waiting_package_code = State()    # Код нового пакета (добавление)
+    waiting_package_name = State()
+    waiting_package_pages = State()
+    waiting_package_price = State()
+    waiting_package_sort_order = State()
+    waiting_package_edit_value = State()  # Значение при редактировании (package_id, field в data)

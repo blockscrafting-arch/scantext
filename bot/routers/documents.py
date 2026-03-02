@@ -46,7 +46,7 @@ async def on_document(message: Message, session) -> None:
         )
         ok, ded_free, ded_paid = await spend_user_limit(session, user, amount=1)
         if not ok:
-            await message.answer("Лимит исчерпан. Используйте /buy для покупки.")
+            await message.answer("Лимит исчерпан. Используйте /buy — выберите тариф и оплатите пакет страниц.")
             return
 
         file_id, file_name, mime_type = _get_file_id_and_name(message)

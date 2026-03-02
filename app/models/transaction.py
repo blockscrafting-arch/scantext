@@ -29,6 +29,11 @@ class Transaction(Base):
     currency: Mapped[str] = mapped_column(String(3), default="RUB", nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)  # pending, succeeded, canceled, etc.
     description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Снимок пакета на момент покупки (для начисления по webhook)
+    package_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    package_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    package_pages: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    package_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
