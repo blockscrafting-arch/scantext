@@ -363,8 +363,6 @@ async def admin_broadcast_abort(callback: CallbackQuery, state: FSMContext) -> N
 # Примечание: LLM/OCR сейчас читаются из .env (config); здесь — опциональные переопределения в БД на будущее.
 SETTINGS_KEYS = [
     ("FREE_LIMITS_PER_MONTH", "Бесплатных страниц в месяц", "int"),
-    ("PAYMENT_PACK_PRICE", "Цена пакета (₽)", "str"),
-    ("PAYMENT_PACK_SIZE", "Страниц в пакете", "int"),
     ("LLM_REQUEST_TIMEOUT", "Таймаут запроса LLM (сек)", "int"),
     ("PDF_MAX_PAGES", "Макс. страниц PDF за раз", "int"),
     ("BOT_ABOUT_TEXT", "О боте (About)", "str"),
