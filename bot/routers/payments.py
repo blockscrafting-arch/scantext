@@ -15,7 +15,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy import delete, func, select
 
 from app.models import Transaction, User
-from app.services.settings import PaymentPackageData, get_active_packages, get_package_by_code
+from app.services.settings import PaymentPackageData, get_active_packages, get_package_by_code, get_setting
 from app.yookassa_service import create_payment
 from bot.keyboards.payments import PAY_PACKAGE_PREFIX, packages_keyboard, payment_link_keyboard
 from config import get_settings
@@ -44,8 +44,13 @@ async def _show_packages(message: Message, session) -> bool:
     if not packages:
         await message.answer("Покупка временно недоступна. Попробуйте позже.")
         return False
+    header_raw = await get_setting(session, "PAYMENT_TARIFFS_HEADER")
+    if header_raw and str(header_raw).strip():
+        header = str(header_raw).strip()
+    else:
+        header = get_settings().PAYMENT_TARIFFS_HEADER or "Выберите тариф:"
     lines = [_format_tariff_line(p) for p in packages]
-    text = "Выберите тариф:\n\n" + "\n".join(lines)
+    text = header + "\n\n" + "\n".join(lines)
     await message.answer(text, reply_markup=packages_keyboard(packages))
     return True
 

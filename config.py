@@ -62,6 +62,10 @@ class Settings(BaseSettings):
         default="ООО «Ромашка»\nИНН 1234567890 / ОГРН 1234567890123\nПоддержка: @support_user", 
         description="Текст раздела About (описание бота)"
     )
+    PAYMENT_TARIFFS_HEADER: str = Field(
+        default="Выберите тариф:",
+        description="Текст над списком тарифов при /buy",
+    )
     FREE_LIMITS_PER_MONTH: int = Field(default=5, description="Free document processing limit per user per period")
     LIMIT_RESET_CRON: str = Field(default="0 0 1 * *", description="Cron for resetting free limits (default: 1st of month)")
     PAYMENT_PACK_SIZE: int = Field(default=10, description="Страниц в платном пакете за одну оплату")

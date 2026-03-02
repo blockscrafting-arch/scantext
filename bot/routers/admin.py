@@ -368,6 +368,7 @@ SETTINGS_KEYS = [
     ("LLM_REQUEST_TIMEOUT", "Таймаут запроса LLM (сек)", "int"),
     ("PDF_MAX_PAGES", "Макс. страниц PDF за раз", "int"),
     ("BOT_ABOUT_TEXT", "О боте (About)", "str"),
+    ("PAYMENT_TARIFFS_HEADER", "Текст блока тарифов", "str"),
 ]
 
 
