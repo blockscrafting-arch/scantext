@@ -35,3 +35,32 @@ def test_parse_utm_from_payload_term_content():
     assert out.get("utm_campaign") == ["c"]
     assert out.get("utm_term") == ["keyword"]
     assert out.get("utm_content") == ["block"]
+
+
+def test_parse_utm_telegram_format_double_underscore():
+    """Telegram-формат: source-xxx__medium-yyy__campaign-zzz (разделитель __)."""
+    out = _parse_utm_from_payload("source-gramads__medium-AI__campaign-bun")
+    assert out.get("utm_source") == ["gramads"]
+    assert out.get("utm_medium") == ["AI"]
+    assert out.get("utm_campaign") == ["bun"]
+
+
+def test_parse_utm_telegram_format_single_param():
+    """Один параметр в Telegram-формате."""
+    out = _parse_utm_from_payload("source-telegram")
+    assert out.get("utm_source") == ["telegram"]
+
+
+def test_parse_utm_telegram_format_value_with_hyphen():
+    """Значение с дефисом (split по первому '-')."""
+    out = _parse_utm_from_payload("source-gram-ads__medium-cpc")
+    assert out.get("utm_source") == ["gram-ads"]
+    assert out.get("utm_medium") == ["cpc"]
+
+
+def test_parse_utm_short_prefixes_s_m_c():
+    """Короткие префиксы s, m, c (как в инструкции для заказчика)."""
+    out = _parse_utm_from_payload("s-gramads_m-AI_c-bun")
+    assert out.get("utm_source") == ["gramads"]
+    assert out.get("utm_medium") == ["AI"]
+    assert out.get("utm_campaign") == ["bun"]

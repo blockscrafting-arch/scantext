@@ -31,12 +31,48 @@ def _parse_start_payload(text: str) -> str | None:
 
 
 def _parse_utm_from_payload(payload: str | None) -> dict:
-    """Парсит UTM из строки вида utm_source=xxx&utm_medium=yyy или просто одну метку."""
+    """
+    Парсит UTM из строки. 
+    Поддерживает:
+    1. Классический URL format (если передан): utm_source=xxx&utm_medium=yyy
+    2. Специальный формат для Telegram (только a-zA-Z0-9_-):
+       source-xxx__medium-yyy__campaign-zzz
+    3. Одиночная метка.
+    """
     if not payload:
         return {}
     payload = unquote(payload)
+    
+    # 1. Если каким-то чудом прошел классический формат
     if "=" in payload:
         return parse_qs(payload)
+    
+    # 2. Телеграм-совместимый формат: source-xxx__medium-yyy
+    # Используем двойное подчеркивание '__' для разделения параметров,
+    # а одинарное тире '-' для разделения ключ-значение.
+    if "-" in payload:
+        result = {}
+        pairs = payload.split("__") if "__" in payload else payload.split("_")
+        for pair in pairs:
+            if "-" in pair:
+                parts = pair.split("-", 1)
+                if len(parts) == 2:
+                    k, v = parts
+                    # Короткие префиксы (s, m, c) и полные имена → utm_source, utm_medium, utm_campaign
+                    utm_keys = {
+                        "s": "utm_source", "src": "utm_source", "source": "utm_source",
+                        "m": "utm_medium", "med": "utm_medium", "medium": "utm_medium",
+                        "c": "utm_campaign", "cmp": "utm_campaign", "campaign": "utm_campaign",
+                        "t": "utm_term", "term": "utm_term",
+                        "cnt": "utm_content", "content": "utm_content",
+                    }
+                    if k in utm_keys:
+                        k = utm_keys[k]
+                    result[k] = [v]
+        if result:
+            return result
+
+    # 3. Одиночная строка (например, start=partner123)
     return {"raw": [payload]}
 
 
