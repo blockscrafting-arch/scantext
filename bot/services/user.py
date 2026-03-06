@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -40,7 +41,24 @@ async def get_or_create_user(
         free_limits_remaining=limit,
     )
     session.add(user)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as e:
+        orig = getattr(e, "orig", e)
+        msg, name = str(orig), type(orig).__name__
+        if "ix_users_tg_id" not in msg and "UniqueViolationError" not in name:
+            raise
+        await session.rollback()
+        result = await session.execute(
+            select(User).where(User.tg_id == tg_id).options(selectinload(User.balance))
+        )
+        existing = result.scalar_one_or_none()
+        if not existing:
+            raise
+        existing.username = username or existing.username
+        existing.first_name = first_name or existing.first_name
+        existing.last_name = last_name or existing.last_name
+        return existing
     balance = UserBalance(user_id=user.id)
     session.add(balance)
     await session.flush()
